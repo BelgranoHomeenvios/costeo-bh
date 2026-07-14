@@ -166,8 +166,8 @@
    (La anon key es pública por diseño: lo que protege es el RLS.
     NUNCA pegues acá la service_role.)
    ══════════════════════════════════════════════════════════════ */
-const SUPABASE_URL  = "https://TU-PROYECTO.supabase.co";
-const SUPABASE_ANON  = "TU-ANON-KEY";
+const SUPABASE_URL  = "https://bbxyoojlfcaxbkdsqlyg.supabase.co";
+const SUPABASE_ANON = "sb_publishable_6IImUqLs0mNBLkNpp64dyw_P7dxvWPL";
 /* ══════════════════════════════════════════════════════════════ */
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);

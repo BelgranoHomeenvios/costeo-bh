@@ -153,7 +153,37 @@
   .back-link{background:none;border:none;color:var(--blue);font-family:var(--sans);font-size:13px;
     font-weight:600;cursor:pointer;padding:0;margin-bottom:14px;}
   .detail-grid{display:grid;grid-template-columns:1.2fr 1fr;gap:18px;}
-  @media(max-width:820px){.detail-grid,.row-2{grid-template-columns:1fr;}}
+
+  /* Productos: barra de modelos + matriz de variantes */
+  .prod-layout{display:grid;grid-template-columns:170px 1fr;gap:18px;align-items:start;}
+  .modelo-nav{display:flex;flex-direction:column;gap:3px;}
+  .modelo-btn{display:flex;justify-content:space-between;align-items:center;padding:9px 12px;
+    border:none;background:none;border-radius:8px;font-family:var(--sans);font-size:13.5px;
+    font-weight:600;color:var(--ink-soft);cursor:pointer;text-align:left;width:100%;}
+  .modelo-btn:hover{background:#fff;color:var(--ink);}
+  .modelo-btn.active{background:#fff;color:var(--navy);border:1px solid var(--line);
+    box-shadow:inset 2px 0 0 var(--blue);}
+  .modelo-n{font-family:var(--mono);font-size:11px;color:var(--ink-soft);font-weight:500;}
+  .espejo-bar{display:flex;align-items:center;gap:6px;margin-bottom:14px;flex-wrap:wrap;}
+  .espejo-lbl{font-size:11px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;
+    letter-spacing:.06em;margin-right:4px;}
+  .espejo-de{font-weight:500;text-transform:none;letter-spacing:0;opacity:.75;}
+  .matriz{width:100%;}
+  .matriz th{padding:14px 16px 10px;}
+  .matriz td{padding:0;}
+  .matriz td:first-child{padding:14px 16px;}
+  .dim-prof{display:block;font-size:11px;color:var(--ink-soft);font-weight:400;margin-top:2px;}
+  .celda{cursor:pointer;padding:12px 16px !important;transition:background .12s;}
+  .celda:hover{background:#f5f8fe;}
+  .celda-costo{font-family:var(--mono);font-size:14.5px;font-weight:600;color:var(--navy);display:block;}
+  .celda-warn{font-size:10px;font-weight:600;color:var(--red);display:block;margin-top:3px;}
+  .var-selector{display:flex;gap:24px;flex-wrap:wrap;margin-bottom:20px;padding:14px 16px;
+    background:#fff;border:1px solid var(--line);border-radius:10px;}
+  .var-group{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+  .var-lbl{font-size:11px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;
+    letter-spacing:.06em;margin-right:2px;}
+
+  @media(max-width:820px){.detail-grid,.row-2,.prod-layout{grid-template-columns:1fr;}}
 </style>
 </head>
 <body>
@@ -178,7 +208,54 @@ let state = {
   materiales:[], insumos:[], herrajes:[], kits:[], roles:[], categorias:[], productos:[],
   config:{carga_laboral_pct:38, unidades:['ud','m','litro','kg','par','juego','plancha']},
   historial:[],
-  modal:null, productDetail:null, search:''
+  modal:null, productDetail:null, search:'',
+  modeloSel:null,           // modelo activo en la barra lateral
+  espejoSel:0,              // 0 | 1 | 2 puertas espejadas
+  variante:{mat:'blanco', esp:0}   // variante que se está viendo en el detalle
+};
+
+/* ---------- VARIANTES ----------
+   El ancho es una receta base (cada uno consume distinto).
+   El material es un swap. El espejo saca melamina y mete espejo. */
+const MATERIALES_VAR = [
+  {id:'blanco', label:'Mel blanco', placa:'Melamina blanco 18mm',        tapa:'Tapacanto mel blanco 22mm'},
+  {id:'madera', label:'Mel madera', placa:'Melamina texturada (madera)', tapa:'Tapacanto madera 22mm'},
+];
+const byNameMat = n => state.materiales.find(x=>x.nombre===n);
+const byNameIns = n => state.insumos.find(x=>x.nombre===n);
+
+// Corredizo = tiene puertas corredizas. Solo esos admiten espejo.
+function esCorredizo(p){ return (p.puertas||0) > 0; }
+// Área de UNA hoja: el ancho se reparte entre las puertas, + 5cm de solape
+function areaPuerta(p){
+  const n = p.puertas||0;
+  if(!n || !p.ancho || !p.alto) return 0;
+  return ((p.ancho/n + 5)/100) * (p.alto/100);
+}
+// Devuelve una copia del producto con la variante aplicada
+function aplicarVariante(p, v){
+  const q = JSON.parse(JSON.stringify(p));
+  q.materiales = q.materiales||[]; q.insumos = q.insumos||[];
+  const base = MATERIALES_VAR[0], sel = MATERIALES_VAR.find(m=>m.id===v.mat) || base;
+
+  if(sel.id!==base.id){
+    const de = byNameMat(base.placa), a = byNameMat(sel.placa);
+    if(de && a) q.materiales.forEach(l=>{ if(l.material_id===de.id) l.material_id = a.id; });
+    const td = byNameIns(base.tapa), ta = byNameIns(sel.tapa);
+    if(td && ta) q.insumos.forEach(l=>{ if(l.insumo_id===td.id) l.insumo_id = ta.id; });
+  }
+  if(v.esp>0 && esCorredizo(p)){
+    const mel = byNameMat(sel.placa), esp = byNameMat('Espejo');
+    const area = +(areaPuerta(p) * v.esp).toFixed(2);
+    const linea = mel ? q.materiales.find(l=>l.material_id===mel.id) : null;
+    if(linea) linea.m2 = Math.max(0, +(linea.m2 - area).toFixed(2));
+    if(esp) q.materiales.push({material_id:esp.id, m2:area});
+  }
+  return q;
+}
+const varLabel = v => {
+  const m = MATERIALES_VAR.find(x=>x.id===v.mat)?.label || '';
+  return m + (v.esp>0 ? ` · ${v.esp} espejo${v.esp>1?'s':''}` : '');
 };
 
 const fmt  = n => (isFinite(n)?n:0).toLocaleString('es-AR',{maximumFractionDigits:0});
@@ -539,46 +616,116 @@ function variacionesPage(){
   </div>`;
 }
 
-/* ---------- PRODUCTOS ---------- */
+/* ---------- PRODUCTOS: modelos + matriz de variantes ---------- */
 function productsPage(){
-  const l = state.productos.filter(p=>!state.search||p.nombre.toLowerCase().includes(state.search.toLowerCase()));
+  const modelos = [...new Set(state.productos.map(p=>p.modelo).filter(Boolean))].sort();
+  const sueltos = state.productos.filter(p=>!p.modelo);
+  if(!state.modeloSel && modelos.length) state.modeloSel = modelos[0];
+
+  const lista = state.productos
+    .filter(p => p.modelo===state.modeloSel)
+    .sort((a,b)=>(a.ancho||0)-(b.ancho||0));
+
+  const maxPuertas = Math.max(0, ...lista.map(p=>p.puertas||0));
+  if(state.espejoSel > maxPuertas) state.espejoSel = 0;
+
+  const nav = `
+    <aside class="modelo-nav">
+      ${modelos.map(m=>{
+        const n = state.productos.filter(p=>p.modelo===m).length;
+        return `<button class="modelo-btn ${state.modeloSel===m?'active':''}" data-modelo="${esc(m)}">
+          ${esc(m)} <span class="modelo-n">${n}</span></button>`;
+      }).join('')}
+      ${sueltos.length?`<button class="modelo-btn ${state.modeloSel==='__otros'?'active':''}" data-modelo="__otros">
+        Otros <span class="modelo-n">${sueltos.length}</span></button>`:''}
+      <button class="add-line-btn" style="margin-top:10px;" data-new="producto">+ Producto</button>
+    </aside>`;
+
+  const espejoBar = maxPuertas>0 ? `
+    <div class="espejo-bar">
+      <span class="espejo-lbl">Puertas espejadas <span class="espejo-de">de ${maxPuertas}</span></span>
+      ${Array.from({length:maxPuertas+1},(_,n)=>`<button class="chip ${state.espejoSel===n?'chip-on':''}" data-espejo="${n}">
+        ${n===0?'Ninguna':n===1?'1 puerta':n+' puertas'}</button>`).join('')}
+    </div>` : '';
+
+  const cuerpo = lista.length ? `
+    <table class="matriz">
+      <thead><tr>
+        <th style="width:26%;">Medida</th>
+        ${MATERIALES_VAR.map(m=>`<th class="num">${m.label}</th>`).join('')}
+      </tr></thead>
+      <tbody>
+        ${lista.map(p=>`<tr>
+          <td>
+            <strong>${p.ancho}×${p.alto}</strong>
+            <span class="dim-prof">prof ${p.profundidad||'—'}${p.puertas?` · ${p.puertas} puertas`:''}</span>
+          </td>
+          ${MATERIALES_VAR.map(m=>{
+            const v = {mat:m.id, esp:state.espejoSel};
+            const q = aplicarVariante(p, v);
+            const c = productCost(q);
+            const f = faltantes(q);
+            return `<td class="num celda" data-cell="${p.id}|${m.id}|${state.espejoSel}">
+              <span class="celda-costo">$${fmt(c.total)}</span>
+              ${f.length?`<span class="celda-warn">${f.length} sin precio</span>`:''}
+            </td>`;
+          }).join('')}
+        </tr>`).join('')}
+      </tbody>
+    </table>` : empty('No hay productos en este modelo.');
+
   return head('02 · Productos','Productos',
-    'Cada producto es una receta: materiales, insumos, herrajes y horas. El costo se calcula solo desde los datos maestros.')
-  + `<div class="card-title" style="margin-bottom:16px;">
-      <input id="search" placeholder="Buscar producto…" value="${esc(state.search)}" style="max-width:280px;">
-      <button class="btn-primary" data-new="producto">+ Cargar producto</button>
-     </div>
-    ${l.length?`<div class="prod-grid">${l.map(p=>{
-      const c = productCost(p); const f = faltantes(p);
-      const cat = state.categorias.find(x=>x.id===p.categoria_id);
-      return `<div class="prod-card" data-view="${p.id}">
-        <div class="prod-cat">${esc(cat?.nombre||'Sin categoría')}</div>
-        <div class="prod-name">${esc(p.nombre)}</div>
-        <div class="prod-dims">${p.ancho||'—'} × ${p.alto||'—'} × ${p.profundidad||'—'} cm${p.color?' · '+esc(p.color):''}</div>
-        <div class="prod-cost">$${fmt(c.total)}</div>
-        ${f.length?`<div class="missing-tag" style="margin:8px 0 0;">costo incompleto · ${f.length} sin precio</div>`:''}
-        <div class="prod-actions">
-          <button class="icon-btn" data-dup="${p.id}">Duplicar</button>
-          <button class="icon-btn" data-del="productos:${p.id}" style="color:var(--red);">Borrar</button>
-        </div></div>`;}).join('')}</div>`
-    :empty('Todavía no cargaste productos.')}`;
+    'Cada medida es una receta. El material y el espejo son variantes: cambian el costo sin duplicar el producto.')
+    + `<div class="prod-layout">${nav}
+        <section>
+          ${espejoBar}
+          <div class="card" style="padding:0;overflow:hidden;">${cuerpo}</div>
+        </section>
+      </div>`;
+}
+
+/* ---------- OTROS (productos sin modelo) ---------- */
+function otrosPage(){
+  const l = state.productos.filter(p=>!p.modelo);
+  return l.map(p=>{
+    const c = productCost(p);
+    return `<div class="prod-card" data-view="${p.id}">
+      <div class="prod-name">${esc(p.nombre)}</div>
+      <div class="prod-cost">$${fmt(c.total)}</div></div>`;
+  }).join('');
 }
 
 function productDetail(){
-  const p = state.productos.find(x=>x.id===state.productDetail);
-  if(!p) return empty('Producto no encontrado.');
+  const base = state.productos.find(x=>x.id===state.productDetail);
+  if(!base) return empty('Producto no encontrado.');
+  const v = state.variante;
+  const p = aplicarVariante(base, v);          // receta con la variante aplicada
   const c = productCost(p);
   const f = faltantes(p);
-  const cat = state.categorias.find(x=>x.id===p.categoria_id);
+  const cat = state.categorias.find(x=>x.id===base.categoria_id);
+  const corr = esCorredizo(base);
+
+  const selector = `
+    <div class="var-selector">
+      <div class="var-group">
+        <span class="var-lbl">Material</span>
+        ${MATERIALES_VAR.map(m=>`<button class="chip ${v.mat===m.id?'chip-on':''}" data-vmat="${m.id}">${m.label}</button>`).join('')}
+      </div>
+      ${corr?`<div class="var-group">
+        <span class="var-lbl">Espejo</span>
+        ${Array.from({length:(base.puertas||0)+1},(_,n)=>`<button class="chip ${v.esp===n?'chip-on':''}" data-vesp="${n}">${n===0?'Ninguno':n===1?'1 puerta':n+' puertas'}</button>`).join('')}
+      </div>`:''}
+    </div>`;
   const pct = v => c.total ? (v/c.total*100).toFixed(0) : 0;
   const row = (label,v) => `<div class="breakdown-row"><span class="label">${label}</span>
     <span><span class="amt">$${fmt(v)}</span><span class="pct">${pct(v)}%</span></span></div>`;
   return `<button class="back-link" id="back">← Volver a productos</button>
   ${f.length?`<div class="warn-box"><strong>Costo incompleto.</strong> Estos ítems están en $0 y no suman al total:
      ${f.map(esc).join(', ')}. Cargales el precio antes de usar este número para cotizar.</div>`:''}
-  <div class="page-eyebrow">${esc(cat?.nombre||'Sin categoría')}</div>
-  <h1 class="page-title">${esc(p.nombre)}</h1>
-  <p class="page-desc">${p.ancho||'—'} × ${p.alto||'—'} × ${p.profundidad||'—'} cm${p.color?' · '+esc(p.color):''}</p>
+  <div class="page-eyebrow">${esc(cat?.nombre||'Sin categoría')}${base.modelo?' · '+esc(base.modelo):''}</div>
+  <h1 class="page-title">${esc(base.nombre)}</h1>
+  <p class="page-desc">${base.ancho||'—'} × ${base.alto||'—'} × ${base.profundidad||'—'} cm · <strong>${varLabel(v)}</strong></p>
+  ${selector}
   <div class="detail-grid">
     <div class="ticket">
       <div class="card-title">Desglose de costo</div>
@@ -589,7 +736,8 @@ function productDetail(){
       ${row('Otros',c.otros)}
       <div class="total-row"><span class="label">Costo directo total</span><span class="amt">$${fmt(c.total)}</span></div>
       <div class="helper" style="margin-top:14px;">Este es el <strong>costo directo</strong>. Todavía no incluye la estructura del taller (alquiler, luz, amortización), así que no es el costo total: no le pongas margen como si lo fuera.</div>
-      <div style="margin-top:14px;"><button class="btn-primary" data-edit="producto:${p.id}">Editar producto</button></div>
+      <div style="margin-top:14px;"><button class="btn-primary" data-edit="producto:${base.id}">Editar receta base</button>
+      <button class="icon-btn" data-del="productos:${base.id}" style="color:var(--red);margin-left:8px;">Borrar</button></div>
     </div>
     <div class="card">
       <div class="card-title">Receta</div>
@@ -725,10 +873,23 @@ function kitLines(){
 
 function productoForm(id){
   const p = id ? state.productos.find(x=>x.id===id)
-    : {nombre:'',categoria_id:'',ancho:'',alto:'',profundidad:'',color:'',materiales:[],insumos:[],kit_id:'',sueltos:[],horas:[],otros:0};
+    : {nombre:'',modelo:'',puertas:0,categoria_id:'',ancho:'',alto:'',profundidad:'',color:'',materiales:[],insumos:[],kit_id:'',sueltos:[],horas:[],otros:0};
   draft = JSON.parse(JSON.stringify({materiales:p.materiales||[],insumos:p.insumos||[],
                                      sueltos:p.sueltos||[],horas:p.horas||[]}));
-  return `<div class="field"><label>Nombre del producto</label><input id="f-nombre" value="${esc(p.nombre)}" placeholder="ej: Placard Oliver 140×240 mel blanco"></div>
+  const modelos = [...new Set(state.productos.map(x=>x.modelo).filter(Boolean))];
+  return `<div class="field"><label>Nombre del producto</label><input id="f-nombre" value="${esc(p.nombre)}" placeholder="ej: Placard Oliver 140×240"></div>
+    <div class="row-2">
+      <div class="field"><label>Modelo (familia)</label>
+        <input id="f-modelo" value="${esc(p.modelo)}" list="mod-list" placeholder="ej: Oliver, Ryan, Benito">
+        <datalist id="mod-list">${modelos.map(m=>`<option value="${esc(m)}">`).join('')}</datalist>
+      </div>
+      <div class="field"><label>Puertas corredizas</label>
+        <select id="f-puertas">
+          ${[0,1,2,3,4].map(n=>`<option value="${n}" ${n===(p.puertas||0)?'selected':''}>${n===0?'Sin corredizas':n+(n>1?' puertas':' puerta')}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+    <div class="helper">Las puertas definen el área de cada hoja — y con eso, cuánto espejo entra y cuánta melamina sale en las variantes espejadas. Sin corredizas = no admite espejo.</div>
     <div class="row-2">
       <div class="field"><label>Categoría</label><select id="f-cat">
         <option value="">— Sin categoría —</option>
@@ -811,7 +972,18 @@ function bindEvents(){
     ev.stopPropagation();
     const [t,i]=e.dataset.del.split(':'); del(t,i);});
   document.querySelectorAll('[data-view]').forEach(e=>e.onclick=()=>{
-    state.productDetail=e.dataset.view; render();});
+    state.productDetail=e.dataset.view; state.variante={mat:'blanco',esp:0}; render();});
+  document.querySelectorAll('[data-modelo]').forEach(e=>e.onclick=()=>{
+    state.modeloSel=e.dataset.modelo; state.espejoSel=0; render();});
+  document.querySelectorAll('[data-espejo]').forEach(e=>e.onclick=()=>{
+    state.espejoSel=+e.dataset.espejo; render();});
+  document.querySelectorAll('[data-cell]').forEach(e=>e.onclick=()=>{
+    const [id,mat,esp]=e.dataset.cell.split('|');
+    state.productDetail=id; state.variante={mat, esp:+esp}; render();});
+  document.querySelectorAll('[data-vmat]').forEach(e=>e.onclick=()=>{
+    state.variante={...state.variante, mat:e.dataset.vmat}; render();});
+  document.querySelectorAll('[data-vesp]').forEach(e=>e.onclick=()=>{
+    state.variante={...state.variante, esp:+e.dataset.vesp}; render();});
   document.querySelectorAll('[data-dup]').forEach(e=>e.onclick=async(ev)=>{
     ev.stopPropagation();
     const p = state.productos.find(x=>x.id===e.dataset.dup);
@@ -903,7 +1075,9 @@ function bindSave(){
       await save('categorias',id,{nombre:val('f-nombre'),horas});
     }
     if(t==='producto'){
-      await save('productos',id,{nombre:val('f-nombre'),categoria_id:val('f-cat')||null,color:val('f-color'),
+      await save('productos',id,{nombre:val('f-nombre'),modelo:val('f-modelo')||null,
+        puertas:parseInt(val('f-puertas'))||0,
+        categoria_id:val('f-cat')||null,color:val('f-color'),
         ancho:numVal('f-ancho'),alto:numVal('f-alto'),profundidad:numVal('f-prof'),
         materiales:draft.materiales,insumos:draft.insumos,kit_id:val('f-kit')||null,
         sueltos:draft.sueltos,horas:draft.horas,otros:numVal('f-otros')});

@@ -313,13 +313,18 @@ async function loadAll(){
   state.ready = true; render();
 }
 
-async function save(tabla, id, data, esCorreccion){
-  if(esCorreccion) await sb.rpc('set_config',{setting_name:'app.es_correccion',new_value:'true',is_local:true}).catch(()=>{});
-  const q = id ? sb.from(tabla).update(data).eq('id',id) : sb.from(tabla).insert(data);
-  const {error} = await q;
-  if(error){ alert('Error al guardar: '+error.message); return; }
-  state.modal = null;
-  await loadAll();
+async function save(tabla, id, data){
+  try{
+    const q = id ? sb.from(tabla).update(data).eq('id',id) : sb.from(tabla).insert(data);
+    const {error} = await q;
+    if(error) throw error;
+    state.modal = null;
+    await loadAll();
+    return true;
+  }catch(e){
+    alert('No se pudo guardar: ' + (e.message || e));
+    return false;   // el botón se re-habilita en bindSave
+  }
 }
 async function del(tabla, id){
   if(!confirm('¿Borrar este ítem?')) return;
@@ -1059,30 +1064,40 @@ function bindSave(){
   const id = btn.dataset.id || null;
   const corr = ()=>{ const e=document.getElementById('f-corr'); return e?e.checked:false; };
   btn.onclick = async()=>{
+    const txt = btn.textContent;
     btn.disabled = true; btn.textContent = 'Guardando…';
-    const t = state.modal.type;
-    if(t==='material')  await save('materiales',id,{nombre:val('f-nombre'),familia:val('f-familia'),
-        precio:numVal('f-precio'),ancho:numVal('f-ancho'),alto:numVal('f-alto'),desperdicio:numVal('f-desp')},corr());
-    if(t==='insumo')    await save('insumos',id,{nombre:val('f-nombre'),familia:val('f-familia'),
-        precio_compra:numVal('f-precio'),unidad:val('f-unidad'),contenido:numVal('f-contenido')},corr());
-    if(t==='herraje')   await save('herrajes',id,{nombre:val('f-nombre'),familia:val('f-familia'),
-        precio:numVal('f-precio'),unidad:val('f-unidad')},corr());
-    if(t==='kit')       await save('kits',id,{nombre:val('f-nombre'),items:draft.items});
-    if(t==='rol')       await save('roles_mano_obra',id,{nombre:val('f-nombre'),tarifa:numVal('f-tarifa')});
-    if(t==='categoria'){
-      const horas={};
-      document.querySelectorAll('[data-cat-rol]').forEach(e=>{ const v=parseFloat(e.value)||0; if(v) horas[e.dataset.catRol]=v; });
-      await save('categorias',id,{nombre:val('f-nombre'),horas});
+    let ok = false;
+    try{
+      const t = state.modal.type;
+      if(t==='material')  ok = await save('materiales',id,{nombre:val('f-nombre'),familia:val('f-familia'),
+          precio:numVal('f-precio'),ancho:numVal('f-ancho'),alto:numVal('f-alto'),desperdicio:numVal('f-desp'),
+          es_correccion:corr()});
+      if(t==='insumo')    ok = await save('insumos',id,{nombre:val('f-nombre'),familia:val('f-familia'),
+          precio_compra:numVal('f-precio'),unidad:val('f-unidad'),contenido:numVal('f-contenido'),
+          es_correccion:corr()});
+      if(t==='herraje')   ok = await save('herrajes',id,{nombre:val('f-nombre'),familia:val('f-familia'),
+          precio:numVal('f-precio'),unidad:val('f-unidad'),es_correccion:corr()});
+      if(t==='kit')       ok = await save('kits',id,{nombre:val('f-nombre'),items:draft.items});
+      if(t==='rol')       ok = await save('roles_mano_obra',id,{nombre:val('f-nombre'),tarifa:numVal('f-tarifa')});
+      if(t==='categoria'){
+        const horas={};
+        document.querySelectorAll('[data-cat-rol]').forEach(e=>{ const v=parseFloat(e.value)||0; if(v) horas[e.dataset.catRol]=v; });
+        ok = await save('categorias',id,{nombre:val('f-nombre'),horas});
+      }
+      if(t==='producto'){
+        ok = await save('productos',id,{nombre:val('f-nombre'),modelo:val('f-modelo')||null,
+          puertas:parseInt(val('f-puertas'))||0,
+          categoria_id:val('f-cat')||null,color:val('f-color'),
+          ancho:numVal('f-ancho'),alto:numVal('f-alto'),profundidad:numVal('f-prof'),
+          materiales:draft.materiales,insumos:draft.insumos,kit_id:val('f-kit')||null,
+          sueltos:draft.sueltos,horas:draft.horas,otros:numVal('f-otros')});
+        if(ok) state.productDetail = null;
+      }
+    }catch(e){
+      alert('No se pudo guardar: ' + (e.message || e));
     }
-    if(t==='producto'){
-      await save('productos',id,{nombre:val('f-nombre'),modelo:val('f-modelo')||null,
-        puertas:parseInt(val('f-puertas'))||0,
-        categoria_id:val('f-cat')||null,color:val('f-color'),
-        ancho:numVal('f-ancho'),alto:numVal('f-alto'),profundidad:numVal('f-prof'),
-        materiales:draft.materiales,insumos:draft.insumos,kit_id:val('f-kit')||null,
-        sueltos:draft.sueltos,horas:draft.horas,otros:numVal('f-otros')});
-      state.productDetail = null;
-    }
+    // Si falló, devolvemos el botón para que puedas reintentar
+    if(!ok){ btn.disabled = false; btn.textContent = txt; }
   };
 }
 

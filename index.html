@@ -111,10 +111,17 @@
     background:var(--paper);padding:10px 12px;border-radius:8px;margin:14px 0;cursor:pointer;line-height:1.4;}
   .check-row input{width:auto;margin-top:2px;}
   .line-item-row{display:grid;grid-template-columns:1fr 110px 34px;gap:8px;margin-bottom:8px;align-items:center;}
+  .field-row{display:grid;gap:12px;margin-bottom:4px;}
+  .prov-head,.prov-row{display:grid;grid-template-columns:38px 1.4fr 1fr 90px 130px 34px;gap:8px;align-items:center;}
+  .prov-head{font-size:11px;font-weight:600;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;padding:0 2px;}
+  .prov-row{margin-bottom:8px;}
+  .prov-row input[type=radio]{width:auto;margin:0 auto;cursor:pointer;}
+  .prov-active{background:var(--paper);border-radius:8px;padding:8px;margin:0 -8px 8px;}
 
   .modal-backdrop{position:fixed;inset:0;background:rgba(26,35,50,.5);z-index:50;display:flex;
     align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto;}
   .modal{background:#fff;border-radius:14px;padding:26px;width:100%;max-width:560px;}
+  .modal.modal-wide{max-width:920px;}
   .modal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;}
   .modal-title{font-size:18px;font-weight:700;color:var(--navy);}
   .modal-close{background:none;border:none;font-size:20px;color:var(--ink-soft);cursor:pointer;}
@@ -145,6 +152,7 @@
   .missing-tag{display:inline-block;font-size:10px;font-weight:600;padding:2px 7px;border-radius:5px;
     background:var(--red-soft);color:var(--red);margin-left:7px;}
   .var-badge{font-family:var(--mono);font-size:10.5px;font-weight:600;margin-top:3px;}
+  .price-date{font-family:var(--mono);font-size:10.5px;font-weight:500;color:var(--ink-soft);margin-top:2px;}
   .var-up{color:var(--red);} .var-down{color:var(--sage);}
   .warn-box{background:var(--amber-soft);border:1px solid #fcd34d;color:var(--amber);padding:12px 14px;
     border-radius:9px;font-size:13px;margin-bottom:18px;line-height:1.5;}
@@ -183,6 +191,10 @@
   .var-lbl{font-size:11px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;
     letter-spacing:.06em;margin-right:2px;}
 
+  @media(max-width:960px){.modal.modal-wide{max-width:560px;}
+    .field-row{grid-template-columns:1fr 1fr !important;}
+    .prov-head{display:none;}
+    .prov-row{grid-template-columns:38px 1fr 1fr;grid-auto-rows:auto;}}
   @media(max-width:820px){.detail-grid,.row-2,.prod-layout{grid-template-columns:1fr;}}
 </style>
 </head>
@@ -205,24 +217,22 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 let state = {
   user:null, ready:false,
   tab:'products', materialsSubtab:'placas', familiaFilter:'',
-  materiales:[], insumos:[], herrajes:[], kits:[], roles:[], categorias:[], productos:[],
-  config:{carga_laboral_pct:38, unidades:['ud','m','litro','kg','par','juego','plancha']},
+  materiales:[], insumos:[], kits:[], roles:[], categorias:[], productos:[],
+  config:{carga_laboral_pct:38, unidades:['ud','m','litro','kg','par','juego','plancha'],
+          variantes_material:[], espejo_material_id:null},
   historial:[],
   modal:null, productDetail:null, search:'',
   modeloSel:null,           // modelo activo en la barra lateral
   espejoSel:0,              // 0 | 1 | 2 puertas espejadas
-  variante:{mat:'blanco', esp:0}   // variante que se está viendo en el detalle
+  variante:{mat:0, esp:0}   // variante que se está viendo en el detalle (mat = índice en config.variantes_material)
 };
 
 /* ---------- VARIANTES ----------
    El ancho es una receta base (cada uno consume distinto).
-   El material es un swap. El espejo saca melamina y mete espejo. */
-const MATERIALES_VAR = [
-  {id:'blanco', label:'Mel blanco', placa:'Melamina blanco 18mm',        tapa:'Tapacanto mel blanco 22mm'},
-  {id:'madera', label:'Mel madera', placa:'Melamina texturada (madera)', tapa:'Tapacanto madera 22mm'},
-];
-const byNameMat = n => state.materiales.find(x=>x.nombre===n);
-const byNameIns = n => state.insumos.find(x=>x.nombre===n);
+   El material es un swap. El espejo saca melamina y mete espejo.
+   Las variantes de material y el material de espejo se configuran en
+   Configuración (por ID de material/insumo real, no por nombre escrito a mano). */
+const variantesMat = () => state.config.variantes_material||[];
 
 // Corredizo = tiene puertas corredizas. Solo esos admiten espejo.
 function esCorredizo(p){ return (p.puertas||0) > 0; }
@@ -236,25 +246,35 @@ function areaPuerta(p){
 function aplicarVariante(p, v){
   const q = JSON.parse(JSON.stringify(p));
   q.materiales = q.materiales||[]; q.insumos = q.insumos||[];
-  const base = MATERIALES_VAR[0], sel = MATERIALES_VAR.find(m=>m.id===v.mat) || base;
+  const list = variantesMat();
+  const base = list[0]||{}, sel = list[v.mat]||base;
 
-  if(sel.id!==base.id){
-    const de = byNameMat(base.placa), a = byNameMat(sel.placa);
-    if(de && a) q.materiales.forEach(l=>{ if(l.material_id===de.id) l.material_id = a.id; });
-    const td = byNameIns(base.tapa), ta = byNameIns(sel.tapa);
-    if(td && ta) q.insumos.forEach(l=>{ if(l.insumo_id===td.id) l.insumo_id = ta.id; });
+  if(sel.placa_id && base.placa_id && sel.placa_id!==base.placa_id){
+    q.materiales.forEach(l=>{ if(l.material_id===base.placa_id) l.material_id = sel.placa_id; });
+  }
+  if(sel.tapa_id && base.tapa_id && sel.tapa_id!==base.tapa_id){
+    q.insumos.forEach(l=>{ if(l.insumo_id===base.tapa_id) l.insumo_id = sel.tapa_id; });
   }
   if(v.esp>0 && esCorredizo(p)){
-    const mel = byNameMat(sel.placa), esp = byNameMat('Espejo');
+    const espId = state.config.espejo_material_id;
     const area = +(areaPuerta(p) * v.esp).toFixed(2);
-    const linea = mel ? q.materiales.find(l=>l.material_id===mel.id) : null;
+    const linea = sel.placa_id ? q.materiales.find(l=>l.material_id===sel.placa_id) : null;
     if(linea) linea.m2 = Math.max(0, +(linea.m2 - area).toFixed(2));
-    if(esp) q.materiales.push({material_id:esp.id, m2:area});
+    if(espId) q.materiales.push({material_id:espId, m2:area});
   }
   return q;
 }
+// Avisa si falta configurar el material de espejo o las variantes antes de confiar en el cálculo
+function variantesIncompletas(p, v){
+  const out = [];
+  if(v.esp>0 && esCorredizo(p) && !state.config.espejo_material_id) out.push('Falta configurar el material de Espejo en Configuración.');
+  const list = variantesMat();
+  if(!list.length) out.push('Todavía no configuraste las variantes de material en Configuración.');
+  else if(v.mat>0 && !(list[v.mat]||{}).placa_id) out.push('Esa variante de material no tiene placa asignada en Configuración.');
+  return out;
+}
 const varLabel = v => {
-  const m = MATERIALES_VAR.find(x=>x.id===v.mat)?.label || '';
+  const m = (variantesMat()[v.mat]||{}).label || '';
   return m + (v.esp>0 ? ` · ${v.esp} espejo${v.esp>1?'s':''}` : '');
 };
 
@@ -294,10 +314,9 @@ async function doLogout(){ await sb.auth.signOut(); state.ready=true; render(); 
 /* ---------- DATA ---------- */
 async function loadAll(){
   state.ready = false; render();
-  const [mat,ins,her,kit,rol,cat,pro,cfg,his] = await Promise.all([
+  const [mat,ins,kit,rol,cat,pro,cfg,his] = await Promise.all([
     sb.from('materiales').select('*').order('nombre'),
     sb.from('insumos').select('*').order('nombre'),
-    sb.from('herrajes').select('*').order('nombre'),
     sb.from('kits').select('*').order('nombre'),
     sb.from('roles_mano_obra').select('*').order('nombre'),
     sb.from('categorias').select('*').order('nombre'),
@@ -306,7 +325,7 @@ async function loadAll(){
     sb.from('historial_precios').select('*').order('fecha',{ascending:false}).limit(100),
   ]);
   state.materiales = mat.data||[];  state.insumos = ins.data||[];
-  state.herrajes   = her.data||[];  state.kits    = kit.data||[];
+  state.kits       = kit.data||[];
   state.roles      = rol.data||[];  state.categorias = cat.data||[];
   state.productos  = pro.data||[];  state.historial  = his.data||[];
   if(cfg.data) state.config = cfg.data;
@@ -336,15 +355,17 @@ async function del(tabla, id){
 /* ---------- MOTOR DE COSTEO ---------- */
 function costPerM2(m){
   const area = (m.ancho/100)*(m.alto/100)*(1-(m.desperdicio||0)/100);
-  return area>0 ? m.precio/area : 0;
+  const neto = (m.precio||0)*(1-(m.descuento_pct||0)/100);
+  return area>0 ? neto/area : 0;
 }
 function costPerUnit(i){
-  return i.contenido>0 ? (i.precio_compra||0)/i.contenido : 0;
+  const neto = (i.precio_compra||0)*(1-(i.descuento_pct||0)/100);
+  return i.contenido>0 ? neto/i.contenido : 0;
 }
 function kitCost(k){
   return (k.items||[]).reduce((s,li)=>{
-    const h = state.herrajes.find(x=>x.id===li.herraje_id);
-    return s + (h ? h.precio*li.cantidad : 0);
+    const i = state.insumos.find(x=>x.id===li.insumo_id);
+    return s + (i ? costPerUnit(i)*li.cantidad : 0);
   },0);
 }
 function productCost(p){
@@ -352,18 +373,17 @@ function productCost(p){
     const m = state.materiales.find(x=>x.id===l.material_id);
     return s + (m ? costPerM2(m)*l.m2 : 0);
   },0);
-  const insumos = (p.insumos||[]).reduce((s,l)=>{
+  let insumos = (p.insumos||[]).reduce((s,l)=>{
     const i = state.insumos.find(x=>x.id===l.insumo_id);
     return s + (i ? costPerUnit(i)*l.cantidad : 0);
   },0);
-  let herrajes = 0;
   if(p.kit_id){
     const k = state.kits.find(x=>x.id===p.kit_id);
-    if(k) herrajes += kitCost(k);
+    if(k) insumos += kitCost(k);
   }
-  herrajes += (p.sueltos||[]).reduce((s,l)=>{
-    const h = state.herrajes.find(x=>x.id===l.herraje_id);
-    return s + (h ? h.precio*l.cantidad : 0);
+  insumos += (p.sueltos||[]).reduce((s,l)=>{
+    const i = state.insumos.find(x=>x.id===l.insumo_id);
+    return s + (i ? costPerUnit(i)*l.cantidad : 0);
   },0);
   const moBase = (p.horas||[]).reduce((s,l)=>{
     const r = state.roles.find(x=>x.id===l.rol_id);
@@ -372,17 +392,17 @@ function productCost(p){
   const carga = state.config.carga_laboral_pct||0;
   const manoDeObra = moBase*(1+carga/100);
   const otros = p.otros||0;
-  return {materiales,insumos,herrajes,manoDeObra,moBase,otros,
-          total: materiales+insumos+herrajes+manoDeObra+otros};
+  return {materiales,insumos,manoDeObra,moBase,otros,
+          total: materiales+insumos+manoDeObra+otros};
 }
 // Detecta si el costo está incompleto por precios en $0
 function faltantes(p){
   const out = [];
   (p.materiales||[]).forEach(l=>{ const m=state.materiales.find(x=>x.id===l.material_id); if(m&&!m.precio) out.push(m.nombre); });
   (p.insumos||[]).forEach(l=>{ const i=state.insumos.find(x=>x.id===l.insumo_id); if(i&&!i.precio_compra) out.push(i.nombre); });
-  (p.sueltos||[]).forEach(l=>{ const h=state.herrajes.find(x=>x.id===l.herraje_id); if(h&&!h.precio) out.push(h.nombre); });
+  (p.sueltos||[]).forEach(l=>{ const i=state.insumos.find(x=>x.id===l.insumo_id); if(i&&!i.precio_compra) out.push(i.nombre); });
   if(p.kit_id){ const k=state.kits.find(x=>x.id===p.kit_id);
-    (k?.items||[]).forEach(li=>{ const h=state.herrajes.find(x=>x.id===li.herraje_id); if(h&&!h.precio) out.push(h.nombre); }); }
+    (k?.items||[]).forEach(li=>{ const i=state.insumos.find(x=>x.id===li.insumo_id); if(i&&!i.precio_compra) out.push(i.nombre); }); }
   (p.horas||[]).forEach(l=>{ const r=state.roles.find(x=>x.id===l.rol_id); if(r&&!r.tarifa&&l.horas>0) out.push(r.nombre+' (tarifa)'); });
   return [...new Set(out)];
 }
@@ -447,20 +467,24 @@ const empty = t => `<div class="empty">${t}</div>`;
 
 /* ---------- MATERIALES HUB ---------- */
 function materialesHub(){
-  const subs = [['placas','Placas'],['insumos','Insumos'],['herrajes','Herrajes'],['kits','Kits']];
-  const src = {placas:'materiales',insumos:'insumos',herrajes:'herrajes'}[state.materialsSubtab];
+  const subs = [['placas','Placas'],['insumos','Insumos'],['kits','Kits']];
+  const src = {placas:'materiales',insumos:'insumos'}[state.materialsSubtab];
   const familias = src ? [...new Set(state[src].map(x=>x.familia).filter(Boolean))] : [];
   const bar = familias.length ? `<div class="familia-bar">
       <button class="chip ${!state.familiaFilter?'chip-on':''}" data-familia="">Todas</button>
       ${familias.map(f=>`<button class="chip ${state.familiaFilter===f?'chip-on':''}" data-familia="${esc(f)}">${esc(f)}</button>`).join('')}
     </div>` : '';
-  const body = {placas:placasTable,insumos:insumosTable,herrajes:herrajesTable,kits:kitsTable}[state.materialsSubtab]();
+  const body = {placas:placasTable,insumos:insumosTable,kits:kitsTable}[state.materialsSubtab]();
   return head('01 · Datos maestros','Materiales',
     'Todo lo que compone un mueble, en un solo lugar. Cambiá de solapa y filtrá por familia para encontrar rápido.')
     + `<nav class="subtabbar">${subs.map(([id,l])=>
         `<button class="subtab ${state.materialsSubtab===id?'active':''}" data-subtab="${id}">${l}</button>`).join('')}</nav>`
     + bar + body;
 }
+const hoy = () => new Date().toISOString().slice(0,10);
+const fechaCorta = f => f ? `<div class="price-date">${new Date(f+'T00:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'2-digit'})}</div>` : '<div class="price-date" style="opacity:.6;">sin fecha</div>';
+const descTag = pct => pct>0 ? `<div class="price-date">-${pct}% desc.</div>` : '';
+const otrosProvTag = it => (it.proveedores_alt||[]).length ? `<div class="price-date">+${it.proveedores_alt.length} cotización(es) más</div>` : '';
 const badge = it => {
   const h = state.historial.find(x=>x.item_id===it.id);
   if(!h) return '';
@@ -474,12 +498,13 @@ function placasTable(){
   const l = flt(state.materiales);
   return `<div class="card">
     <div class="card-title">Placas cargadas<button class="btn-primary btn-sm" data-new="material">+ Agregar placa</button></div>
-    ${l.length?`<table><thead><tr><th>Nombre</th><th>Familia</th><th class="num">Precio plancha</th>
+    ${l.length?`<table><thead><tr><th>Nombre</th><th>Familia</th><th>Proveedor</th><th class="num">Precio plancha</th>
       <th class="num">Medidas</th><th class="num">Desperdicio</th><th class="num">Costo/m²</th><th></th></tr></thead>
       <tbody>${l.map(m=>`<tr>
         <td>${esc(m.nombre)}${!m.precio?'<span class="missing-tag">falta precio</span>':''}</td>
         <td>${esc(m.familia)||'—'}</td>
-        <td class="num">$${fmt(m.precio)}</td>
+        <td>${esc(m.proveedor)||'—'}${otrosProvTag(m)}</td>
+        <td class="num">$${fmt(m.precio)}${descTag(m.descuento_pct)}${fechaCorta(m.fecha_precio)}</td>
         <td class="num">${m.ancho}×${m.alto}cm</td>
         <td class="num">${m.desperdicio}%</td>
         <td class="num">$${fmt2(costPerM2(m))}${badge(m)}</td>
@@ -492,35 +517,19 @@ function insumosTable(){
   const l = flt(state.insumos);
   return `<div class="card">
     <div class="card-title">Insumos cargados<button class="btn-primary btn-sm" data-new="insumo">+ Agregar insumo</button></div>
-    <div class="helper">Lo que comprás por litro, kilo o metro y usás en fracciones: laca, sellador, diluyente, cola, tapacantos. Cargás lo que dice la factura y el costo por unidad se calcula solo.</div>
-    ${l.length?`<table><thead><tr><th>Nombre</th><th>Familia</th><th class="num">Precio de compra</th>
+    <div class="helper">Todo lo que comprás para el mueble, salvo placas: laca, sellador, diluyente, cola, tapacantos, correderas, bisagras, tiradores y demás herrajes. Si lo comprás por unidad (ej. una corredera), cargá contenido = 1. Cargás lo que dice la factura y el costo por unidad se calcula solo.</div>
+    ${l.length?`<table><thead><tr><th>Nombre</th><th>Familia</th><th>Proveedor</th><th class="num">Precio de compra</th>
       <th class="num">Contenido</th><th class="num">Costo por unidad</th><th></th></tr></thead>
       <tbody>${l.map(i=>`<tr>
         <td>${esc(i.nombre)}${!i.precio_compra?'<span class="missing-tag">falta precio</span>':''}</td>
         <td>${esc(i.familia)||'—'}</td>
-        <td class="num">$${fmt(i.precio_compra)}</td>
+        <td>${esc(i.proveedor)||'—'}${otrosProvTag(i)}</td>
+        <td class="num">$${fmt(i.precio_compra)}${descTag(i.descuento_pct)}${fechaCorta(i.fecha_precio)}</td>
         <td class="num">${fmt2(i.contenido)} ${esc(i.unidad)}</td>
         <td class="num">$${fmt2(costPerUnit(i))}/${esc(i.unidad)}${badge(i)}</td>
         <td class="num"><button class="icon-btn" data-edit="insumo:${i.id}">Editar</button>
           <button class="icon-btn" data-del="insumos:${i.id}">Borrar</button></td>
       </tr>`).join('')}</tbody></table>`:empty('No hay insumos en esta familia.')}
-  </div>`;
-}
-function herrajesTable(){
-  const l = flt(state.herrajes);
-  return `<div class="card">
-    <div class="card-title">Herrajes cargados<button class="btn-primary btn-sm" data-new="herraje">+ Agregar herraje</button></div>
-    <div class="helper">Agrupá por familia (ej: "Correderas") para encontrar rápido las variantes: Z 35mm, Z 40mm, telescópicas…</div>
-    ${l.length?`<table><thead><tr><th>Nombre</th><th>Familia</th><th class="num">Precio unitario</th>
-      <th class="num">Unidad</th><th></th></tr></thead>
-      <tbody>${l.map(h=>`<tr>
-        <td>${esc(h.nombre)}${!h.precio?'<span class="missing-tag">falta precio</span>':''}</td>
-        <td>${esc(h.familia)||'—'}</td>
-        <td class="num">$${fmt(h.precio)}${badge(h)}</td>
-        <td class="num">${esc(h.unidad)}</td>
-        <td class="num"><button class="icon-btn" data-edit="herraje:${h.id}">Editar</button>
-          <button class="icon-btn" data-del="herrajes:${h.id}">Borrar</button></td>
-      </tr>`).join('')}</tbody></table>`:empty('No hay herrajes en esta familia.')}
   </div>`;
 }
 function kitsTable(){
@@ -552,7 +561,7 @@ function laborPage(){
       <th class="num">Hora cargada real</th><th></th></tr></thead>
       <tbody>${state.roles.map(r=>`<tr>
         <td>${esc(r.nombre)}${!r.tarifa?'<span class="missing-tag">falta tarifa</span>':''}</td>
-        <td class="num">$${fmt(r.tarifa)}/h</td>
+        <td class="num">$${fmt(r.tarifa)}/h${fechaCorta(r.fecha_precio)}</td>
         <td class="num"><strong>$${fmt(r.tarifa*(1+c/100))}/h</strong></td>
         <td class="num"><button class="icon-btn" data-edit="rol:${r.id}">Editar</button>
           <button class="icon-btn" data-del="roles_mano_obra:${r.id}">Borrar</button></td>
@@ -561,8 +570,25 @@ function laborPage(){
 }
 
 /* ---------- CONFIGURACIÓN ---------- */
+function variantesLines(){
+  const list = draft.variantes_material||[];
+  if(!list.length) return '<div class="helper">Todavía no cargaste ninguna variante. La primera que agregues es la <strong>variante base</strong> (la que ya usan tus recetas hoy, normalmente Mel blanco): no se hace swap para esa.</div>';
+  return list.map((vr,ix)=>`<div class="line-item-row" style="grid-template-columns:0.9fr 1.3fr 1.3fr 34px;">
+    <input data-vln="${ix}" data-f="label" value="${esc(vr.label||'')}" placeholder="${ix===0?'ej: Mel blanco (base)':'ej: Mel madera'}">
+    <select data-vln="${ix}" data-f="placa_id">
+      <option value="">— Elegir placa —</option>
+      ${state.materiales.map(m=>`<option value="${m.id}" ${m.id===vr.placa_id?'selected':''}>${esc(m.nombre)}</option>`).join('')}
+    </select>
+    <select data-vln="${ix}" data-f="tapa_id">
+      <option value="">— Sin tapacanto —</option>
+      ${state.insumos.map(i=>`<option value="${i.id}" ${i.id===vr.tapa_id?'selected':''}>${esc(i.nombre)}</option>`).join('')}
+    </select>
+    <button class="icon-btn" data-rmvln="${ix}">✕</button>
+  </div>`).join('');
+}
 function configPage(){
   const cfg = state.config;
+  if(!Array.isArray(draft.variantes_material)) draft.variantes_material = JSON.parse(JSON.stringify(cfg.variantes_material||[]));
   return head('04 · Configuración','Configuración','Parámetros globales. Lo que cambies acá afecta a todos los productos.')
   + `<div class="card">
     <div class="card-title">Carga laboral</div>
@@ -573,8 +599,23 @@ function configPage(){
     </div>
   </div>
   <div class="card">
+    <div class="card-title">Variantes de material y espejo</div>
+    <div class="helper">Acá definís, eligiendo tus propios materiales e insumos (no por nombre escrito, por ID real), qué placa y tapacanto corresponden a cada variante — y cuál material usás para las puertas espejadas. Esto es lo que hace que la matriz de Productos y el selector "Puertas espejadas" calculen solos, restando la placa y sumando el espejo.</div>
+    <div id="ln-variantes">${variantesLines()}</div>
+    <button type="button" class="add-line-btn" id="add-variante">+ Agregar variante de material</button>
+    <div class="row-2" style="max-width:480px;margin-top:16px;">
+      <div class="field"><label>Material para puertas espejadas</label>
+        <select id="cfg-espejo">
+          <option value="">— Sin definir —</option>
+          ${state.materiales.map(m=>`<option value="${m.id}" ${m.id===cfg.espejo_material_id?'selected':''}>${esc(m.nombre)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="field" style="align-self:end;"><button class="btn-primary" id="save-variantes">Guardar variantes</button></div>
+    </div>
+  </div>
+  <div class="card">
     <div class="card-title">Unidades de medida</div>
-    <div class="helper">Las que aparecen en los desplegables al cargar herrajes e insumos.</div>
+    <div class="helper">Las que aparecen en los desplegables al cargar insumos.</div>
     <div class="familia-bar">${(cfg.unidades||[]).map(u=>
       `<span class="chip chip-static">${esc(u)} <button class="chip-x" data-delu="${esc(u)}">✕</button></span>`).join('')}</div>
     <div class="row-2" style="max-width:420px;">
@@ -607,7 +648,7 @@ function variacionesPage(){
       <th class="num">Antes</th><th class="num">Después</th><th class="num">Variación</th></tr></thead>
       <tbody>${state.historial.map(h=>{
         const p = h.precio_anterior ? ((h.precio_nuevo-h.precio_anterior)/h.precio_anterior*100) : 0;
-        const tipos = {materiales:'Placa',insumos:'Insumo',herrajes:'Herraje'};
+        const tipos = {materiales:'Placa',insumos:'Insumo'};
         return `<tr>
           <td>${new Date(h.fecha).toLocaleDateString('es-AR')}</td>
           <td>${esc((h.usuario_email||'').split('@')[0])}</td>
@@ -646,6 +687,9 @@ function productsPage(){
       <button class="add-line-btn" style="margin-top:10px;" data-new="producto">+ Producto</button>
     </aside>`;
 
+  const vlist = variantesMat();
+  const sinVariantes = !vlist.length ? `<div class="warn-box">Todavía no configuraste las <strong>variantes de material</strong> (ej. Mel blanco / Mel madera) ni el material de <strong>Espejo</strong>. Andá a Configuración → "Variantes de material y espejo" para poder calcular estas combinaciones.</div>` : '';
+
   const espejoBar = maxPuertas>0 ? `
     <div class="espejo-bar">
       <span class="espejo-lbl">Puertas espejadas <span class="espejo-de">de ${maxPuertas}</span></span>
@@ -657,7 +701,7 @@ function productsPage(){
     <table class="matriz">
       <thead><tr>
         <th style="width:26%;">Medida</th>
-        ${MATERIALES_VAR.map(m=>`<th class="num">${m.label}</th>`).join('')}
+        ${vlist.map(m=>`<th class="num">${esc(m.label)}</th>`).join('')}
       </tr></thead>
       <tbody>
         ${lista.map(p=>`<tr>
@@ -665,12 +709,12 @@ function productsPage(){
             <strong>${p.ancho}×${p.alto}</strong>
             <span class="dim-prof">prof ${p.profundidad||'—'}${p.puertas?` · ${p.puertas} puertas`:''}</span>
           </td>
-          ${MATERIALES_VAR.map(m=>{
-            const v = {mat:m.id, esp:state.espejoSel};
+          ${vlist.map((m,ix)=>{
+            const v = {mat:ix, esp:state.espejoSel};
             const q = aplicarVariante(p, v);
             const c = productCost(q);
             const f = faltantes(q);
-            return `<td class="num celda" data-cell="${p.id}|${m.id}|${state.espejoSel}">
+            return `<td class="num celda" data-cell="${p.id}|${ix}|${state.espejoSel}">
               <span class="celda-costo">$${fmt(c.total)}</span>
               ${f.length?`<span class="celda-warn">${f.length} sin precio</span>`:''}
             </td>`;
@@ -681,6 +725,7 @@ function productsPage(){
 
   return head('02 · Productos','Productos',
     'Cada medida es una receta. El material y el espejo son variantes: cambian el costo sin duplicar el producto.')
+    + sinVariantes
     + `<div class="prod-layout">${nav}
         <section>
           ${espejoBar}
@@ -707,14 +752,16 @@ function productDetail(){
   const p = aplicarVariante(base, v);          // receta con la variante aplicada
   const c = productCost(p);
   const f = faltantes(p);
+  const vi = variantesIncompletas(base, v);
   const cat = state.categorias.find(x=>x.id===base.categoria_id);
   const corr = esCorredizo(base);
+  const vlist = variantesMat();
 
   const selector = `
     <div class="var-selector">
       <div class="var-group">
         <span class="var-lbl">Material</span>
-        ${MATERIALES_VAR.map(m=>`<button class="chip ${v.mat===m.id?'chip-on':''}" data-vmat="${m.id}">${m.label}</button>`).join('')}
+        ${vlist.map((m,ix)=>`<button class="chip ${v.mat===ix?'chip-on':''}" data-vmat="${ix}">${esc(m.label)}</button>`).join('')}
       </div>
       ${corr?`<div class="var-group">
         <span class="var-lbl">Espejo</span>
@@ -725,6 +772,7 @@ function productDetail(){
   const row = (label,v) => `<div class="breakdown-row"><span class="label">${label}</span>
     <span><span class="amt">$${fmt(v)}</span><span class="pct">${pct(v)}%</span></span></div>`;
   return `<button class="back-link" id="back">← Volver a productos</button>
+  ${vi.length?`<div class="warn-box"><strong>Variantes sin configurar.</strong> ${vi.map(esc).join(' ')}</div>`:''}
   ${f.length?`<div class="warn-box"><strong>Costo incompleto.</strong> Estos ítems están en $0 y no suman al total:
      ${f.map(esc).join(', ')}. Cargales el precio antes de usar este número para cotizar.</div>`:''}
   <div class="page-eyebrow">${esc(cat?.nombre||'Sin categoría')}${base.modelo?' · '+esc(base.modelo):''}</div>
@@ -735,8 +783,7 @@ function productDetail(){
     <div class="ticket">
       <div class="card-title">Desglose de costo</div>
       ${row('Materiales',c.materiales)}
-      ${row('Insumos (pintura, cola…)',c.insumos)}
-      ${row('Herrajes',c.herrajes)}
+      ${row('Insumos (pintura, cola, herrajes…)',c.insumos)}
       ${row(`Mano de obra <span style="font-size:11px;color:var(--ink-soft);">(base $${fmt(c.moBase)} + ${state.config.carga_laboral_pct}% carga)</span>`,c.manoDeObra)}
       ${row('Otros',c.otros)}
       <div class="total-row"><span class="label">Costo directo total</span><span class="amt">$${fmt(c.total)}</span></div>
@@ -754,13 +801,13 @@ function productDetail(){
       ${(p.insumos||[]).map(l=>{const i=state.insumos.find(x=>x.id===l.insumo_id);
         return `<div class="breakdown-row" style="font-size:13px;"><span class="label">${esc(i?.nombre||'—')}</span>
         <span class="amt">${l.cantidad} ${esc(i?.unidad||'')} · $${fmt(i?costPerUnit(i)*l.cantidad:0)}</span></div>`;}).join('')||'<div class="helper">Sin insumos.</div>'}
-      <div class="section-label">Herrajes</div>
+      <div class="section-label">Herrajes (kit + sueltos)</div>
       ${p.kit_id?(()=>{const k=state.kits.find(x=>x.id===p.kit_id);
         return `<div class="breakdown-row" style="font-size:13px;"><span class="label">${esc(k?.nombre||'—')} <span class="pill">kit</span></span>
         <span class="amt">$${fmt(k?kitCost(k):0)}</span></div>`;})():''}
-      ${(p.sueltos||[]).map(l=>{const h=state.herrajes.find(x=>x.id===l.herraje_id);
-        return `<div class="breakdown-row" style="font-size:13px;"><span class="label">${esc(h?.nombre||'—')}</span>
-        <span class="amt">${l.cantidad} × $${fmt(h?.precio||0)}</span></div>`;}).join('')}
+      ${(p.sueltos||[]).map(l=>{const i=state.insumos.find(x=>x.id===l.insumo_id);
+        return `<div class="breakdown-row" style="font-size:13px;"><span class="label">${esc(i?.nombre||'—')}</span>
+        <span class="amt">${l.cantidad} × $${fmt2(i?costPerUnit(i):0)}</span></div>`;}).join('')}
       ${!p.kit_id&&!(p.sueltos||[]).length?'<div class="helper">Sin herrajes.</div>':''}
       <div class="section-label">Mano de obra</div>
       ${(p.horas||[]).map(l=>{const r=state.roles.find(x=>x.id===l.rol_id);
@@ -775,11 +822,12 @@ let draft = {};   // líneas dinámicas en edición
 
 function modalHtml(){
   const {type,id} = state.modal;
-  const titles = {material:'placa',insumo:'insumo',herraje:'herraje',kit:'kit',rol:'rol',
+  const titles = {material:'placa',insumo:'insumo',kit:'kit',rol:'rol',
                   categoria:'categoría',producto:'producto'};
-  const forms  = {material:materialForm,insumo:insumoForm,herraje:herrajeForm,kit:kitForm,
+  const forms  = {material:materialForm,insumo:insumoForm,kit:kitForm,
                   rol:rolForm,categoria:categoriaForm,producto:productoForm};
-  return `<div class="modal-backdrop" id="backdrop"><div class="modal">
+  const wide = (type==='material'||type==='insumo') ? ' modal-wide' : '';
+  return `<div class="modal-backdrop" id="backdrop"><div class="modal${wide}">
     <div class="modal-head">
       <div class="modal-title">${id?'Editar':'Agregar'} ${titles[type]}</div>
       <button class="modal-close" id="modal-close">✕</button>
@@ -794,56 +842,98 @@ const familiaField = (cur,key)=>{
     <input id="f-familia" value="${esc(cur)}" list="fam-list" placeholder="ej: Melaminas, Correderas, Pinturas">
     <datalist id="fam-list">${list.map(f=>`<option value="${esc(f)}">`).join('')}</datalist></div>`;
 };
+const proveedorNames = () => {
+  const set = new Set();
+  [...state.materiales,...state.insumos].forEach(x=>{
+    if(x.proveedor) set.add(x.proveedor);
+    (x.proveedores_alt||[]).forEach(p=>p.proveedor&&set.add(p.proveedor));
+  });
+  return [...set];
+};
+// draft.provs = lista unificada de proveedores; draft.provActivo = índice del elegido
+function proveedoresLines(precioLabel){
+  const list = draft.provs||[];
+  if(!list.length) return '<div class="helper">Todavía no cargaste ningún proveedor para este ítem. Agregá al menos uno con el botón de abajo.</div>';
+  const multi = list.length>1;
+  return `<div class="prov-head">
+      <span>${multi?'Usar':''}</span><span>Proveedor</span><span>${precioLabel}</span><span>Desc. %</span><span>Fecha</span><span></span>
+    </div>` + list.map((pv,ix)=>`<div class="prov-row ${ix===draft.provActivo?'prov-active':''}">
+    <span>${multi?`<input type="radio" name="prov-activo" data-provsel="${ix}" ${ix===draft.provActivo?'checked':''}>`:''}</span>
+    <input data-pl="${ix}" data-f="proveedor" value="${esc(pv.proveedor||'')}" placeholder="Proveedor" list="prov-list">
+    <input data-pl="${ix}" data-f="precio" type="number" value="${pv.precio||0}" placeholder="Precio">
+    <input data-pl="${ix}" data-f="descuento_pct" type="number" value="${pv.descuento_pct||0}" placeholder="0">
+    <input data-pl="${ix}" data-f="fecha_precio" type="date" value="${pv.fecha_precio||hoy()}">
+    <button class="icon-btn" data-rmpl="${ix}" ${list.length===1?'style="visibility:hidden;"':''}>✕</button></div>`).join('');
+}
+function proveedoresBlock(precioLabel){
+  return `<datalist id="prov-list">${proveedorNames().map(p=>`<option value="${esc(p)}">`).join('')}</datalist>
+    <div class="section-label">Proveedores</div>
+    <div class="helper">Cargá uno o más proveedores para este ítem con su precio, descuento y fecha. Si tenés dos o más, marcá con el <strong>check de la izquierda</strong> cuál usás para costear — ese es el que entra en el cálculo. Los demás quedan guardados para comparar.</div>
+    <div id="ln-provs">${proveedoresLines(precioLabel)}</div>
+    <button type="button" class="add-line-btn" id="add-prov">+ Agregar proveedor</button>`;
+}
+// Toma el proveedor activo del draft y lo devuelve como campos para guardar en la fila principal
+function proveedorActivoData(){
+  const list = draft.provs||[];
+  const a = list[draft.provActivo] || list[0] || {proveedor:'',precio:0,descuento_pct:0,fecha_precio:hoy()};
+  const alt = list.filter((_,i)=>i!==(draft.provActivo??0));
+  return {proveedor:a.proveedor||'', precio:+a.precio||0, descuento_pct:+a.descuento_pct||0,
+          fecha_precio:a.fecha_precio||hoy(), alt};
+}
 const unidadSelect = cur => `<select id="f-unidad">${(state.config.unidades||['ud'])
   .map(u=>`<option value="${esc(u)}" ${u===cur?'selected':''}>${esc(u)}</option>`).join('')}</select>`;
 const correccion = id => id ? `<label class="check-row"><input type="checkbox" id="f-corr">
   Esto es una <strong>corrección</strong> de un dato mal cargado, no un cambio de precio real (no se registra en Variaciones)</label>` : '';
 
+// Arma draft.provs uniendo el proveedor activo actual + los alternativos guardados
+function initProvs(it, precioKey){
+  const activo = {proveedor:it.proveedor||'', precio:+(it[precioKey]||0),
+                  descuento_pct:+(it.descuento_pct||0), fecha_precio:it.fecha_precio||hoy()};
+  const alt = JSON.parse(JSON.stringify(it.proveedores_alt||[]));
+  draft.provs = [activo, ...alt];
+  draft.provActivo = 0;
+}
 function materialForm(id){
-  const m = id ? state.materiales.find(x=>x.id===id) : {nombre:'',familia:'',precio:'',ancho:183,alto:275,desperdicio:12};
-  return `<div class="field"><label>Nombre (ej: Melamina blanco 18mm)</label><input id="f-nombre" value="${esc(m.nombre)}"></div>
-    ${familiaField(m.familia,'materiales')}
-    <div class="row-2">
-      <div class="field"><label>Precio de la plancha ($)</label><input id="f-precio" type="number" value="${m.precio}"></div>
-      <div class="field"><label>Desperdicio (%)</label><input id="f-desp" type="number" value="${m.desperdicio}"></div>
+  const m = id ? state.materiales.find(x=>x.id===id) : {nombre:'',familia:'',precio:0,proveedor:'',descuento_pct:0,ancho:183,alto:275,desperdicio:12,fecha_precio:hoy()};
+  initProvs(m,'precio');
+  return `<div class="row-2">
+      <div class="field"><label>Nombre (ej: Melamina blanco 18mm)</label><input id="f-nombre" value="${esc(m.nombre)}"></div>
+      ${familiaField(m.familia,'materiales')}
     </div>
-    <div class="row-2">
+    <div class="field-row" style="grid-template-columns:1fr 1fr 1fr;">
       <div class="field"><label>Ancho de plancha (cm)</label><input id="f-ancho" type="number" value="${m.ancho}"></div>
       <div class="field"><label>Alto de plancha (cm)</label><input id="f-alto" type="number" value="${m.alto}"></div>
+      <div class="field"><label>Desperdicio (%)</label><input id="f-desp" type="number" value="${m.desperdicio}"></div>
     </div>
-    <div class="helper">Estándar de mercado: 183×275cm o 180×250cm según proveedor. El costo por m² se recalcula solo.</div>
+    <div class="helper">Estándar de mercado: 183×275cm o 180×250cm según proveedor. El costo por m² se recalcula solo, ya con el descuento del proveedor activo aplicado.</div>
+    ${proveedoresBlock('Precio plancha $')}
     ${correccion(id)}
     <button class="btn-primary" id="save" data-id="${id||''}">Guardar</button>`;
 }
 function insumoForm(id){
-  const i = id ? state.insumos.find(x=>x.id===id) : {nombre:'',familia:'',unidad:'litro',precio_compra:'',contenido:''};
-  return `<div class="field"><label>Nombre (ej: Laca blanca, Sellador, Diluyente)</label><input id="f-nombre" value="${esc(i.nombre)}"></div>
-    ${familiaField(i.familia,'insumos')}
-    <div class="row-2">
-      <div class="field"><label>Precio de compra ($ — la lata/rollo entero)</label><input id="f-precio" type="number" value="${i.precio_compra}"></div>
+  const i = id ? state.insumos.find(x=>x.id===id) : {nombre:'',familia:'',unidad:'litro',precio_compra:0,descuento_pct:0,contenido:'',proveedor:'',fecha_precio:hoy()};
+  initProvs(i,'precio_compra');
+  return `<div class="row-2">
+      <div class="field"><label>Nombre (ej: Laca blanca, Sellador, Diluyente)</label><input id="f-nombre" value="${esc(i.nombre)}"></div>
+      ${familiaField(i.familia,'insumos')}
+    </div>
+    <div class="field-row" style="grid-template-columns:1fr 1fr;">
       <div class="field"><label>Unidad de uso</label>${unidadSelect(i.unidad)}</div>
+      <div class="field"><label>Contenido de esa compra (cuánto trae)</label><input id="f-contenido" type="number" step="0.01" value="${i.contenido}"></div>
     </div>
-    <div class="field"><label>Contenido de esa compra (cuánto trae)</label><input id="f-contenido" type="number" step="0.01" value="${i.contenido}"></div>
-    <div class="helper">Ejemplo: la lata de laca sale $180.000 y trae 4 litros → el costo por litro sale solo ($45.000). Después, en cada producto, ponés cuántos litros lleva.</div>
-    ${correccion(id)}
-    <button class="btn-primary" id="save" data-id="${id||''}">Guardar</button>`;
-}
-function herrajeForm(id){
-  const h = id ? state.herrajes.find(x=>x.id===id) : {nombre:'',familia:'',precio:'',unidad:'ud'};
-  return `<div class="field"><label>Nombre (ej: Corredera telescópica 45cm)</label><input id="f-nombre" value="${esc(h.nombre)}"></div>
-    ${familiaField(h.familia,'herrajes')}
-    <div class="row-2">
-      <div class="field"><label>Precio unitario ($)</label><input id="f-precio" type="number" value="${h.precio}"></div>
-      <div class="field"><label>Unidad</label>${unidadSelect(h.unidad)}</div>
-    </div>
+    <div class="helper">Ejemplo: la lata de laca sale $180.000, con 10% de descuento pagás $162.000, y trae 4 litros → el costo por litro sale solo ($40.500). Después, en cada producto, ponés cuántos litros lleva.</div>
+    ${proveedoresBlock('Precio compra $')}
     ${correccion(id)}
     <button class="btn-primary" id="save" data-id="${id||''}">Guardar</button>`;
 }
 function rolForm(id){
-  const r = id ? state.roles.find(x=>x.id===id) : {nombre:'',tarifa:''};
+  const r = id ? state.roles.find(x=>x.id===id) : {nombre:'',tarifa:'',fecha_precio:hoy()};
   const c = state.config.carga_laboral_pct||0;
   return `<div class="field"><label>Rol (ej: Cortador, Armador, Laqueador)</label><input id="f-nombre" value="${esc(r.nombre)}"></div>
-    <div class="field"><label>Tarifa horaria nominal ($/h)</label><input id="f-tarifa" type="number" value="${r.tarifa}"></div>
+    <div class="row-2">
+      <div class="field"><label>Tarifa horaria nominal ($/h)</label><input id="f-tarifa" type="number" value="${r.tarifa}"></div>
+      <div class="field"><label>Fecha del precio</label><input id="f-fecha" type="date" value="${r.fecha_precio||hoy()}"></div>
+    </div>
     <div class="helper">Poné lo que le pagás por hora, sin cargas. La app le suma el <strong>${c}%</strong> de carga laboral que definiste en Configuración.</div>
     <button class="btn-primary" id="save" data-id="${id||''}">Guardar</button>`;
 }
@@ -868,10 +958,10 @@ function kitForm(id){
     <div style="margin-top:16px;"><button class="btn-primary" id="save" data-id="${id||''}">Guardar</button></div>`;
 }
 function kitLines(){
-  if(!state.herrajes.length) return '<div class="helper">Primero cargá herrajes.</div>';
+  if(!state.insumos.length) return '<div class="helper">Primero cargá insumos.</div>';
   return draft.items.map((li,ix)=>`<div class="line-item-row">
-    <select data-kl="${ix}" data-f="herraje_id">${state.herrajes.map(h=>
-      `<option value="${h.id}" ${h.id===li.herraje_id?'selected':''}>${esc(h.nombre)}</option>`).join('')}</select>
+    <select data-kl="${ix}" data-f="insumo_id">${state.insumos.map(i=>
+      `<option value="${i.id}" ${i.id===li.insumo_id?'selected':''}>${esc(i.nombre)}</option>`).join('')}</select>
     <input type="number" data-kl="${ix}" data-f="cantidad" value="${li.cantidad}" placeholder="cant.">
     <button class="icon-btn" data-rmkl="${ix}">✕</button></div>`).join('');
 }
@@ -917,7 +1007,7 @@ function productoForm(id){
     <div id="ln-insumos">${lineRows('insumos')}</div>
     <button type="button" class="add-line-btn" data-add="insumos">+ Agregar insumo</button>
 
-    <div class="section-label">Herrajes</div>
+    <div class="section-label">Herrajes (kit + sueltos, se cargan como Insumos)</div>
     <div class="field"><label>Kit de herrajes</label><select id="f-kit">
       <option value="">— Ninguno —</option>
       ${state.kits.map(k=>`<option value="${k.id}" ${k.id===p.kit_id?'selected':''}>${esc(k.nombre)} ($${fmt(kitCost(k))})</option>`).join('')}
@@ -936,14 +1026,14 @@ function productoForm(id){
 
 // Config de cada tipo de línea dinámica: de dónde saca opciones y cómo se llama el campo
 const LN = {
-  materiales:{src:'materiales', fk:'material_id', qty:'m2',       ph:'m²'},
-  insumos:   {src:'insumos',    fk:'insumo_id',   qty:'cantidad', ph:'cant.'},
-  sueltos:   {src:'herrajes',   fk:'herraje_id',  qty:'cantidad', ph:'cant.'},
-  horas:     {src:'roles',      fk:'rol_id',      qty:'horas',    ph:'horas'},
+  materiales:{src:'materiales', fk:'material_id', qty:'m2',       ph:'m²',    label:'placas en Materiales'},
+  insumos:   {src:'insumos',    fk:'insumo_id',   qty:'cantidad', ph:'cant.', label:'insumos'},
+  sueltos:   {src:'insumos',    fk:'insumo_id',   qty:'cantidad', ph:'cant.', label:'insumos'},
+  horas:     {src:'roles',      fk:'rol_id',      qty:'horas',    ph:'horas', label:'roles en Mano de obra'},
 };
 function lineRows(kind){
   const cfg = LN[kind];
-  if(!state[cfg.src].length) return `<div class="helper">Primero cargá ${kind==='horas'?'roles en Mano de obra':kind+' en Materiales'}.</div>`;
+  if(!state[cfg.src].length) return `<div class="helper">Primero cargá ${cfg.label}.</div>`;
   return (draft[kind]||[]).map((l,ix)=>`<div class="line-item-row">
     <select data-ln="${kind}" data-ix="${ix}" data-f="${cfg.fk}">
       ${state[cfg.src].map(o=>`<option value="${o.id}" ${o.id===l[cfg.fk]?'selected':''}>${esc(o.nombre)}</option>`).join('')}
@@ -977,16 +1067,16 @@ function bindEvents(){
     ev.stopPropagation();
     const [t,i]=e.dataset.del.split(':'); del(t,i);});
   document.querySelectorAll('[data-view]').forEach(e=>e.onclick=()=>{
-    state.productDetail=e.dataset.view; state.variante={mat:'blanco',esp:0}; render();});
+    state.productDetail=e.dataset.view; state.variante={mat:0,esp:0}; render();});
   document.querySelectorAll('[data-modelo]').forEach(e=>e.onclick=()=>{
     state.modeloSel=e.dataset.modelo; state.espejoSel=0; render();});
   document.querySelectorAll('[data-espejo]').forEach(e=>e.onclick=()=>{
     state.espejoSel=+e.dataset.espejo; render();});
   document.querySelectorAll('[data-cell]').forEach(e=>e.onclick=()=>{
     const [id,mat,esp]=e.dataset.cell.split('|');
-    state.productDetail=id; state.variante={mat, esp:+esp}; render();});
+    state.productDetail=id; state.variante={mat:+mat, esp:+esp}; render();});
   document.querySelectorAll('[data-vmat]').forEach(e=>e.onclick=()=>{
-    state.variante={...state.variante, mat:e.dataset.vmat}; render();});
+    state.variante={...state.variante, mat:+e.dataset.vmat}; render();});
   document.querySelectorAll('[data-vesp]').forEach(e=>e.onclick=()=>{
     state.variante={...state.variante, esp:+e.dataset.vesp}; render();});
   document.querySelectorAll('[data-dup]').forEach(e=>e.onclick=async(ev)=>{
@@ -1017,10 +1107,16 @@ function bindEvents(){
     await sb.from('config').update({unidades:state.config.unidades.filter(u=>u!==e.dataset.delu)}).eq('id',1);
     await loadAll();});
 
-  // Modal
+  const sv = document.getElementById('save-variantes');
+  if(sv) sv.onclick = async()=>{
+    await sb.from('config').update({variantes_material:draft.variantes_material||[],
+      espejo_material_id: val('cfg-espejo')||null}).eq('id',1);
+    draft.variantes_material = undefined;
+    await loadAll();};
+
+  // Modal — solo se cierra con la X (para no perder lo cargado por un click accidental afuera)
   const bd = document.getElementById('backdrop');
   if(bd){
-    bd.onclick = e => { if(e.target.id==='backdrop'){state.modal=null; render();} };
     document.getElementById('modal-close').onclick = ()=>{state.modal=null; render();};
   }
   bindLines();
@@ -1046,7 +1142,7 @@ function bindLines(){
   // líneas del kit
   const ak = document.getElementById('add-kit');
   if(ak) ak.onclick = ()=>{
-    draft.items.push({herraje_id:state.herrajes[0]?.id||'', cantidad:0});
+    draft.items.push({insumo_id:state.insumos[0]?.id||'', cantidad:0});
     document.getElementById('kit-lines').innerHTML = kitLines();
     bindLines();};
   document.querySelectorAll('[data-kl]').forEach(e=>e.onchange=()=>{
@@ -1055,6 +1151,42 @@ function bindLines(){
   document.querySelectorAll('[data-rmkl]').forEach(e=>e.onclick=()=>{
     draft.items.splice(+e.dataset.rmkl,1);
     document.getElementById('kit-lines').innerHTML = kitLines();
+    bindLines();});
+  // proveedores (materiales/insumos): lista unificada + radio para elegir el activo
+  const precioLabelActual = state.modal && state.modal.type==='material' ? 'Precio plancha $' : 'Precio compra $';
+  const apv = document.getElementById('add-prov');
+  if(apv) apv.onclick = ()=>{
+    draft.provs = draft.provs||[];
+    draft.provs.push({proveedor:'',precio:0,descuento_pct:0,fecha_precio:hoy()});
+    document.getElementById('ln-provs').innerHTML = proveedoresLines(precioLabelActual);
+    bindLines();};
+  document.querySelectorAll('[data-pl]').forEach(e=>e.onchange=()=>{
+    const ix=+e.dataset.pl, f=e.dataset.f;
+    draft.provs[ix][f] = e.type==='number' ? (parseFloat(e.value)||0) : e.value;});
+  document.querySelectorAll('[data-provsel]').forEach(e=>e.onchange=()=>{
+    draft.provActivo = +e.dataset.provsel;
+    document.getElementById('ln-provs').innerHTML = proveedoresLines(precioLabelActual);
+    bindLines();});
+  document.querySelectorAll('[data-rmpl]').forEach(e=>e.onclick=()=>{
+    const ix = +e.dataset.rmpl;
+    draft.provs.splice(ix,1);
+    if(draft.provActivo>=draft.provs.length) draft.provActivo = 0;
+    else if(ix<draft.provActivo) draft.provActivo--;
+    document.getElementById('ln-provs').innerHTML = proveedoresLines(precioLabelActual);
+    bindLines();});
+  // Variantes de material / espejo (Configuración)
+  const avar = document.getElementById('add-variante');
+  if(avar) avar.onclick = ()=>{
+    draft.variantes_material = draft.variantes_material||[];
+    draft.variantes_material.push({label:'',placa_id:'',tapa_id:''});
+    document.getElementById('ln-variantes').innerHTML = variantesLines();
+    bindLines();};
+  document.querySelectorAll('[data-vln]').forEach(e=>e.onchange=()=>{
+    const ix=+e.dataset.vln, f=e.dataset.f;
+    draft.variantes_material[ix][f] = e.value;});
+  document.querySelectorAll('[data-rmvln]').forEach(e=>e.onclick=()=>{
+    draft.variantes_material.splice(+e.dataset.rmvln,1);
+    document.getElementById('ln-variantes').innerHTML = variantesLines();
     bindLines();});
 }
 
@@ -1069,16 +1201,23 @@ function bindSave(){
     let ok = false;
     try{
       const t = state.modal.type;
-      if(t==='material')  ok = await save('materiales',id,{nombre:val('f-nombre'),familia:val('f-familia'),
-          precio:numVal('f-precio'),ancho:numVal('f-ancho'),alto:numVal('f-alto'),desperdicio:numVal('f-desp'),
-          es_correccion:corr()});
-      if(t==='insumo')    ok = await save('insumos',id,{nombre:val('f-nombre'),familia:val('f-familia'),
-          precio_compra:numVal('f-precio'),unidad:val('f-unidad'),contenido:numVal('f-contenido'),
-          es_correccion:corr()});
-      if(t==='herraje')   ok = await save('herrajes',id,{nombre:val('f-nombre'),familia:val('f-familia'),
-          precio:numVal('f-precio'),unidad:val('f-unidad'),es_correccion:corr()});
+      if(t==='material'){
+        const pa = proveedorActivoData();
+        ok = await save('materiales',id,{nombre:val('f-nombre'),familia:val('f-familia'),
+          proveedor:pa.proveedor,precio:pa.precio,descuento_pct:pa.descuento_pct,
+          ancho:numVal('f-ancho'),alto:numVal('f-alto'),desperdicio:numVal('f-desp'),
+          fecha_precio:pa.fecha_precio,proveedores_alt:pa.alt,es_correccion:corr()});
+      }
+      if(t==='insumo'){
+        const pa = proveedorActivoData();
+        ok = await save('insumos',id,{nombre:val('f-nombre'),familia:val('f-familia'),
+          proveedor:pa.proveedor,precio_compra:pa.precio,descuento_pct:pa.descuento_pct,
+          unidad:val('f-unidad'),contenido:numVal('f-contenido'),
+          fecha_precio:pa.fecha_precio,proveedores_alt:pa.alt,es_correccion:corr()});
+      }
       if(t==='kit')       ok = await save('kits',id,{nombre:val('f-nombre'),items:draft.items});
-      if(t==='rol')       ok = await save('roles_mano_obra',id,{nombre:val('f-nombre'),tarifa:numVal('f-tarifa')});
+      if(t==='rol')       ok = await save('roles_mano_obra',id,{nombre:val('f-nombre'),tarifa:numVal('f-tarifa'),
+          fecha_precio:val('f-fecha')||hoy()});
       if(t==='categoria'){
         const horas={};
         document.querySelectorAll('[data-cat-rol]').forEach(e=>{ const v=parseFloat(e.value)||0; if(v) horas[e.dataset.catRol]=v; });

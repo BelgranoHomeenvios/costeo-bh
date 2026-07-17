@@ -98,6 +98,23 @@
     padding:10px;border-radius:8px;font-family:var(--sans);font-size:13px;font-weight:600;cursor:pointer;}
   .add-line-btn:hover{border-color:var(--blue);background:#f5f8fe;}
 
+  .fam-editor-head{display:flex;align-items:center;gap:14px;margin-bottom:18px;}
+  .fam-step{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-soft);margin-bottom:12px;}
+  .fam-step-sub{text-transform:none;letter-spacing:0;font-weight:500;color:var(--ink-soft);}
+  .fam-color-row{display:grid;grid-template-columns:130px 1fr 1fr 34px;gap:8px;align-items:center;margin-bottom:8px;}
+  .fam-roles-pick{display:flex;gap:10px;flex-wrap:wrap;}
+  .fam-role-chip{display:inline-flex;align-items:center;gap:6px;font-size:13px;background:#f5f6f8;border:1px solid var(--line);
+    padding:5px 11px;border-radius:20px;cursor:pointer;}
+  .fam-role-chip input{width:auto;margin:0;}
+  .fam-med-table{width:100%;border-collapse:collapse;font-size:13px;}
+  .fam-med-table th{font-size:11px;text-transform:uppercase;letter-spacing:.02em;color:var(--ink-soft);
+    font-weight:600;padding:6px 8px;text-align:right;white-space:nowrap;}
+  .fam-med-table td{padding:4px 6px;border-top:1px solid var(--line);}
+  .fam-med-table input{height:32px;}
+  .fam-editor-foot{display:flex;justify-content:space-between;align-items:center;margin-top:8px;
+    padding:14px 4px;position:sticky;bottom:0;}
+  .fam-count{font-size:13px;color:var(--ink-soft);font-weight:600;}
+
   .field{margin-bottom:14px;}
   .field label{display:block;font-size:12px;font-weight:600;color:var(--ink-soft);margin-bottom:5px;}
   input,select{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:8px;
@@ -216,15 +233,16 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
 let state = {
   user:null, ready:false,
-  tab:'products', materialsSubtab:'placas', familiaFilter:'',
-  materiales:[], insumos:[], kits:[], roles:[], categorias:[], productos:[],
+  tab:'familias', materialsSubtab:'placas', familiaFilter:'',
+  materiales:[], insumos:[], kits:[], roles:[], categorias:[], productos:[], familias:[],
   config:{carga_laboral_pct:38, unidades:['ud','m','litro','kg','par','juego','plancha'],
           variantes_material:[], espejo_material_id:null},
   historial:[],
   modal:null, productDetail:null, search:'',
   modeloSel:null,           // modelo activo en la barra lateral
   espejoSel:0,              // 0 | 1 | 2 puertas espejadas
-  variante:{mat:0, esp:0}   // variante que se está viendo en el detalle (mat = índice en config.variantes_material)
+  variante:{mat:0, esp:0},  // variante que se está viendo en el detalle (mat = índice en config.variantes_material)
+  famDraft:null             // borrador de la familia en edición (modelo nuevo)
 };
 
 /* ---------- VARIANTES ----------
@@ -314,7 +332,7 @@ async function doLogout(){ await sb.auth.signOut(); state.ready=true; render(); 
 /* ---------- DATA ---------- */
 async function loadAll(){
   state.ready = false; render();
-  const [mat,ins,kit,rol,cat,pro,cfg,his] = await Promise.all([
+  const [mat,ins,kit,rol,cat,pro,cfg,his,fam] = await Promise.all([
     sb.from('materiales').select('*').order('nombre'),
     sb.from('insumos').select('*').order('nombre'),
     sb.from('kits').select('*').order('nombre'),
@@ -323,11 +341,13 @@ async function loadAll(){
     sb.from('productos').select('*').order('nombre'),
     sb.from('config').select('*').eq('id',1).single(),
     sb.from('historial_precios').select('*').order('fecha',{ascending:false}).limit(100),
+    sb.from('familias').select('*').order('nombre'),
   ]);
   state.materiales = mat.data||[];  state.insumos = ins.data||[];
   state.kits       = kit.data||[];
   state.roles      = rol.data||[];  state.categorias = cat.data||[];
   state.productos  = pro.data||[];  state.historial  = his.data||[];
+  state.familias   = fam.data||[];
   if(cfg.data) state.config = cfg.data;
   state.ready = true; render();
 }
@@ -434,7 +454,7 @@ function loginPage(){
 }
 
 function shell(){
-  const tabs = [['products','Productos'],['materiales','Materiales'],['labor','Mano de obra'],
+  const tabs = [['familias','Familias'],['products','Productos (viejo)'],['materiales','Materiales'],['labor','Mano de obra'],
                 ['variaciones','Variaciones'],['config','Configuración']];
   return `
   <header class="topbar">
@@ -454,6 +474,7 @@ function shell(){
 }
 
 function page(){
+  if(state.tab==='familias')    return state.famDraft!==null ? familiaEditor() : familiasPage();
   if(state.tab==='products')    return state.productDetail ? productDetail() : productsPage();
   if(state.tab==='materiales')  return materialesHub();
   if(state.tab==='labor')       return laborPage();
@@ -659,6 +680,208 @@ function variacionesPage(){
           <td class="num ${p>=0?'var-up':'var-down'}"><strong>${p>=0?'▲':'▼'} ${Math.abs(p).toFixed(1)}%</strong></td>
         </tr>`;}).join('')}</tbody></table>`
       :empty('Todavía no hay cambios de precio registrados.')}
+  </div>`;
+}
+
+/* ==================================================================
+   FAMILIAS — modelo nuevo (plantilla con ejes medida × color × puertas)
+   ================================================================== */
+
+/* ---- Motor de costeo de familias ---- */
+function areaPuertaFam(fam, med){
+  const n = fam.n_puertas||0;
+  if(!n || !med.ancho || !med.alto) return 0;
+  return +(((med.ancho/n + 5)/100) * (med.alto/100)).toFixed(3);
+}
+function costoVariante(fam, med, colorIx, espTipoIx, kEsp){
+  const color = (fam.colores||[])[colorIx] || {};
+  const rf = fam.receta_fija||{};
+  const areaEsp = kEsp>0 ? areaPuertaFam(fam, med) * kEsp : 0;
+
+  const placaCuerpo = state.materiales.find(m=>m.id===color.placa_id);
+  const cuerpoM2 = Math.max(0, (med.cuerpo_m2||0) - areaEsp);
+  const cuerpoCost = placaCuerpo ? costPerM2(placaCuerpo) * cuerpoM2 : 0;
+
+  const espTipo = (fam.puerta_tipos||[])[espTipoIx];
+  const espMat = espTipo ? state.materiales.find(m=>m.id===espTipo.material_id) : null;
+  const espCost = espMat ? costPerM2(espMat) * areaEsp : 0;
+
+  const fondoMat = rf.fondo && rf.fondo.material_id ? state.materiales.find(m=>m.id===rf.fondo.material_id) : null;
+  const fondoCost = fondoMat ? costPerM2(fondoMat) * (med.fondo_m2||0) : 0;
+
+  const tapa = state.insumos.find(i=>i.id===color.tapacanto_id);
+  const tapaCost = tapa ? costPerUnit(tapa) * (med.tapacanto_m||0) : 0;
+
+  let herrajeCost = 0;
+  if(rf.kit_id){ const k = state.kits.find(x=>x.id===rf.kit_id); if(k) herrajeCost += kitCost(k); }
+  (rf.sueltos||[]).forEach(s=>{
+    const i = state.insumos.find(x=>x.id===s.insumo_id);
+    if(i) herrajeCost += costPerUnit(i) * (s.cantidad||0);
+  });
+
+  const carga = state.config.carga_laboral_pct||0;
+  let moBase = 0;
+  Object.entries(med.horas||{}).forEach(([rolId,h])=>{
+    const r = state.roles.find(x=>x.id===rolId);
+    if(r) moBase += (r.tarifa||0) * (h||0);
+  });
+  const manoObra = moBase*(1+carga/100);
+
+  const materialesTot = cuerpoCost + espCost + fondoCost;
+  return {
+    cuerpo:cuerpoCost, espejo:espCost, fondo:fondoCost, tapacanto:tapaCost,
+    herrajes:herrajeCost, manoObra, materiales:materialesTot,
+    total: materialesTot + tapaCost + herrajeCost + manoObra
+  };
+}
+function faltantesFam(fam, med, colorIx, espTipoIx, kEsp){
+  const color = (fam.colores||[])[colorIx]||{}; const rf = fam.receta_fija||{}; const out=[];
+  const pc = state.materiales.find(m=>m.id===color.placa_id); if(pc && !pc.precio) out.push(pc.nombre);
+  if(kEsp>0){ const et=(fam.puerta_tipos||[])[espTipoIx]; const em=et&&state.materiales.find(m=>m.id===et.material_id); if(em&&!em.precio) out.push(em.nombre); }
+  const fm = rf.fondo&&state.materiales.find(m=>m.id===rf.fondo.material_id); if(fm&&!fm.precio) out.push(fm.nombre);
+  const tp = state.insumos.find(i=>i.id===color.tapacanto_id); if(tp&&!tp.precio_compra) out.push(tp.nombre);
+  Object.entries(med.horas||{}).forEach(([rid,h])=>{ const r=state.roles.find(x=>x.id===rid); if(r&&!r.tarifa&&h>0) out.push(r.nombre+' (tarifa)'); });
+  return [...new Set(out)];
+}
+const nVariantes = fam => (fam.medidas||[]).length * Math.max(1,(fam.colores||[]).length) * ((fam.n_puertas||0)+1);
+
+/* ---- Listado de familias ---- */
+function familiasPage(){
+  const fams = state.familias;
+  return head('01 · Familias','Familias','Cada familia es una plantilla: una receta base que se despliega en todas sus variantes de medida, color y puertas.')
+  + `<div class="card">
+      <div class="card-title">Familias cargadas<button class="btn-primary btn-sm" data-newfam>+ Nueva familia</button></div>
+      ${fams.length?`<table><thead><tr><th>Nombre</th><th>Apertura</th><th class="num">Puertas</th>
+        <th class="num">Medidas</th><th class="num">Colores</th><th class="num">Variantes</th><th></th></tr></thead>
+        <tbody>${fams.map(f=>`<tr>
+          <td><strong>${esc(f.nombre)}</strong></td>
+          <td>${esc(f.apertura)||'—'}</td>
+          <td class="num">${f.n_puertas||0}</td>
+          <td class="num">${(f.medidas||[]).length}</td>
+          <td class="num">${(f.colores||[]).length}</td>
+          <td class="num">${nVariantes(f)}</td>
+          <td class="num"><button class="icon-btn" data-editfam="${f.id}">Abrir</button>
+            <button class="icon-btn" data-delfam="${f.id}">Borrar</button></td>
+        </tr>`).join('')}</tbody></table>`
+        : empty('Todavía no cargaste ninguna familia. Empezá con "+ Nueva familia".')}
+    </div>`;
+}
+
+/* ---- Editor de familia ---- */
+function nuevaFamiliaDraft(){
+  return {nombre:'', categoria_id:state.categorias[0]?.id||null, apertura:'corrediza', n_puertas:2,
+          colores:[{label:'',placa_id:'',tapacanto_id:''}],
+          puerta_tipos:[{label:'Placa',material_id:null,base:true}],
+          receta_fija:{fondo:{material_id:''}, kit_id:'', sueltos:[]},
+          roles:[], medidas:[]};
+}
+function familiaEditor(){
+  const d = state.famDraft;
+  const editando = !!d.id;
+  const placas  = state.materiales;
+  const roles   = state.roles;
+
+  const coloresRows = (d.colores||[]).map((c,ix)=>`
+    <div class="fam-color-row">
+      <input data-fc="${ix}" data-f="label" value="${esc(c.label)}" placeholder="ej: Mel blanco">
+      <select data-fc="${ix}" data-f="placa_id"><option value="">— placa cuerpo —</option>
+        ${placas.map(m=>`<option value="${m.id}" ${m.id===c.placa_id?'selected':''}>${esc(m.nombre)}</option>`).join('')}</select>
+      <select data-fc="${ix}" data-f="tapacanto_id"><option value="">— tapacanto —</option>
+        ${state.insumos.map(i=>`<option value="${i.id}" ${i.id===c.tapacanto_id?'selected':''}>${esc(i.nombre)}</option>`).join('')}</select>
+      <button class="icon-btn" data-rmfc="${ix}" ${(d.colores.length===1)?'style="visibility:hidden;"':''}>✕</button>
+    </div>`).join('');
+
+  const puertaTipos = (d.puerta_tipos||[]).map((t,ix)=>t.base
+    ? `<span class="chip chip-static">Placa <span class="pill">base = color del cuerpo</span></span>`
+    : `<span class="chip chip-on" data-rmpt="${ix}">${esc(t.label)||'(sin nombre)'} ✕</span>`).join(' ');
+
+  const roleCols = d.roles||[];
+  const medHead = `<tr>
+    <th style="text-align:left;">Medida (ancho×alto)</th>
+    <th class="num">m² cuerpo</th><th class="num">m² fondo</th><th class="num">tapac. m</th>
+    ${roleCols.map(rid=>{const r=roles.find(x=>x.id===rid);return `<th class="num">h ${esc(r?r.nombre:'?')}</th>`;}).join('')}
+    <th></th></tr>`;
+  const medRows = (d.medidas||[]).map((m,ix)=>`<tr>
+    <td><input data-fm="${ix}" data-f="ancho" type="number" value="${m.ancho||''}" placeholder="ancho" style="width:70px;">
+        <span style="color:var(--ink-soft);">×</span>
+        <input data-fm="${ix}" data-f="alto" type="number" value="${m.alto||''}" placeholder="alto" style="width:70px;"></td>
+    <td class="num"><input data-fm="${ix}" data-f="cuerpo_m2" type="number" step="0.01" value="${m.cuerpo_m2||''}" style="width:80px;text-align:right;"></td>
+    <td class="num"><input data-fm="${ix}" data-f="fondo_m2" type="number" step="0.01" value="${m.fondo_m2||''}" style="width:80px;text-align:right;"></td>
+    <td class="num"><input data-fm="${ix}" data-f="tapacanto_m" type="number" step="0.01" value="${m.tapacanto_m||''}" style="width:80px;text-align:right;"></td>
+    ${roleCols.map(rid=>`<td class="num"><input data-fmh="${ix}" data-rol="${rid}" type="number" step="0.5" value="${(m.horas&&m.horas[rid])||''}" style="width:60px;text-align:right;"></td>`).join('')}
+    <td class="num"><button class="icon-btn" data-rmfm="${ix}">✕</button></td>
+  </tr>`).join('');
+
+  const rf = d.receta_fija||{};
+  return `<div class="fam-editor">
+    <div class="fam-editor-head">
+      <button class="icon-btn" data-famback>← Volver</button>
+      <h1 class="page-title" style="margin:4px 0 0;">${editando?'Editar familia':'Nueva familia'}</h1>
+    </div>
+
+    <div class="card">
+      <div class="fam-step">1 · Identidad</div>
+      <div class="row-2">
+        <div class="field"><label>Categoría</label><select id="fam-cat">
+          ${state.categorias.map(c=>`<option value="${c.id}" ${c.id===d.categoria_id?'selected':''}>${esc(c.nombre)}</option>`).join('')}
+        </select></div>
+        <div class="field"><label>Nombre de familia</label><input id="fam-nombre" value="${esc(d.nombre)}" placeholder="ej: Oliver"></div>
+      </div>
+      <div class="row-2">
+        <div class="field"><label>Apertura</label><select id="fam-apertura">
+          <option value="corrediza" ${d.apertura==='corrediza'?'selected':''}>Corrediza</option>
+          <option value="abrir" ${d.apertura==='abrir'?'selected':''}>De abrir</option>
+        </select></div>
+        <div class="field"><label>Puertas <span style="color:var(--ink-soft);">(define la familia)</span></label>
+          <input id="fam-npuertas" type="number" min="0" max="6" value="${d.n_puertas}"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="fam-step">2 · Colores de cuerpo <span class="fam-step-sub">cada uno = placa + tapacanto</span></div>
+      <div id="fam-colores">${coloresRows}</div>
+      <button class="add-line-btn" data-addfc>+ Agregar color</button>
+    </div>
+
+    <div class="card">
+      <div class="fam-step">3 · Tipos de puerta</div>
+      <div class="fam-puertas" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        ${puertaTipos}
+        <span style="display:inline-flex;gap:6px;align-items:center;">
+          <input id="fam-npt-label" placeholder="ej: Espejo" style="width:120px;">
+          <select id="fam-npt-mat" style="width:180px;"><option value="">— material —</option>
+            ${placas.map(m=>`<option value="${m.id}">${esc(m.nombre)}</option>`).join('')}</select>
+          <button class="icon-btn" data-addpt>+ tipo</button>
+        </span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="fam-step">4 · Receta fija <span class="fam-step-sub">lo que no cambia con el color</span></div>
+      <div class="row-2">
+        <div class="field"><label>Fondo (material)</label><select id="fam-fondo"><option value="">— sin fondo —</option>
+          ${placas.map(m=>`<option value="${m.id}" ${m.id===(rf.fondo&&rf.fondo.material_id)?'selected':''}>${esc(m.nombre)}</option>`).join('')}</select></div>
+        <div class="field"><label>Kit de herrajes</label><select id="fam-kit"><option value="">— sin kit —</option>
+          ${state.kits.map(k=>`<option value="${k.id}" ${k.id===rf.kit_id?'selected':''}>${esc(k.nombre)}</option>`).join('')}</select></div>
+      </div>
+      <div class="field"><label>Roles de mano de obra <span style="color:var(--ink-soft);">(arman las columnas de horas)</span></label>
+        <div class="fam-roles-pick">${roles.map(r=>`<label class="fam-role-chip"><input type="checkbox" data-famrole="${r.id}" ${(d.roles||[]).includes(r.id)?'checked':''}> ${esc(r.nombre)}</label>`).join('')||'<span style="color:var(--ink-soft);">Cargá roles en Mano de obra primero.</span>'}</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="fam-step">5 · Tabla de medidas</div>
+      <div class="helper">Una fila por medida, con el consumo real. Las columnas de horas salen de los roles que marcaste arriba.</div>
+      <div style="overflow-x:auto;">
+        <table class="fam-med-table"><thead>${medHead}</thead><tbody>${medRows}</tbody></table>
+      </div>
+      <button class="add-line-btn" data-addfm>+ Agregar medida</button>
+    </div>
+
+    <div class="fam-editor-foot">
+      <span class="fam-count">${nVariantes(d)} variantes</span>
+      <button class="btn-primary" data-savefam>Guardar familia</button>
+    </div>
   </div>`;
 }
 
@@ -1050,10 +1273,100 @@ function bindLogin(){
   if(p) p.onkeydown = e => { if(e.key==='Enter') doLogin(); };
 }
 
+function bindFamilias(){
+  // Listado
+  const nf = document.querySelector('[data-newfam]');
+  if(nf) nf.onclick = ()=>{ state.famDraft = nuevaFamiliaDraft(); render(); };
+  document.querySelectorAll('[data-editfam]').forEach(e=>e.onclick=()=>{
+    const f = state.familias.find(x=>x.id===e.dataset.editfam);
+    if(f){ state.famDraft = JSON.parse(JSON.stringify(f)); render(); }});
+  document.querySelectorAll('[data-delfam]').forEach(e=>e.onclick=async()=>{
+    if(!confirm('¿Borrar esta familia? No se puede deshacer.')) return;
+    await sb.from('familias').delete().eq('id',e.dataset.delfam); await loadAll();});
+
+  const d = state.famDraft;
+  if(!d) return;
+
+  // Volver
+  const back = document.querySelector('[data-famback]');
+  if(back) back.onclick = ()=>{ if(confirm('¿Salir sin guardar? Se pierden los cambios no guardados.')){ state.famDraft=null; render(); } };
+
+  // Campos de identidad (se leen al guardar, pero mantenemos el draft vivo)
+  const bindVal = (id,fn)=>{ const el=document.getElementById(id); if(el) el.onchange=()=>fn(el.value); };
+  bindVal('fam-cat', v=>d.categoria_id=v);
+  bindVal('fam-nombre', v=>d.nombre=v);
+  bindVal('fam-apertura', v=>d.apertura=v);
+  bindVal('fam-npuertas', v=>{ d.n_puertas=+v||0; render(); });
+
+  // Colores
+  document.querySelectorAll('[data-fc]').forEach(e=>e.onchange=()=>{
+    d.colores[+e.dataset.fc][e.dataset.f] = e.value;});
+  const afc = document.querySelector('[data-addfc]');
+  if(afc) afc.onclick = ()=>{ d.colores.push({label:'',placa_id:'',tapacanto_id:''}); render(); };
+  document.querySelectorAll('[data-rmfc]').forEach(e=>e.onclick=()=>{
+    d.colores.splice(+e.dataset.rmfc,1); render();});
+
+  // Tipos de puerta
+  const apt = document.querySelector('[data-addpt]');
+  if(apt) apt.onclick = ()=>{
+    const label = (document.getElementById('fam-npt-label').value||'').trim();
+    const mat = document.getElementById('fam-npt-mat').value;
+    if(!label || !mat){ alert('Poné un nombre y elegí el material del tipo de puerta.'); return; }
+    d.puerta_tipos.push({label, material_id:mat}); render();};
+  document.querySelectorAll('[data-rmpt]').forEach(e=>e.onclick=()=>{
+    d.puerta_tipos.splice(+e.dataset.rmpt,1); render();});
+
+  // Receta fija
+  bindVal('fam-fondo', v=>{ d.receta_fija.fondo = {material_id:v}; });
+  bindVal('fam-kit', v=>{ d.receta_fija.kit_id = v; });
+  document.querySelectorAll('[data-famrole]').forEach(e=>e.onchange=()=>{
+    const rid = e.dataset.famrole;
+    d.roles = d.roles||[];
+    if(e.checked){ if(!d.roles.includes(rid)) d.roles.push(rid); }
+    else d.roles = d.roles.filter(x=>x!==rid);
+    render();});
+
+  // Tabla de medidas
+  document.querySelectorAll('[data-fm]').forEach(e=>e.onchange=()=>{
+    const ix=+e.dataset.fm, f=e.dataset.f;
+    d.medidas[ix][f] = e.type==='number' ? (parseFloat(e.value)||0) : e.value;});
+  document.querySelectorAll('[data-fmh]').forEach(e=>e.onchange=()=>{
+    const ix=+e.dataset.fmh, rid=e.dataset.rol;
+    d.medidas[ix].horas = d.medidas[ix].horas||{};
+    d.medidas[ix].horas[rid] = parseFloat(e.value)||0;});
+  const afm = document.querySelector('[data-addfm]');
+  if(afm) afm.onclick = ()=>{ d.medidas.push({ancho:'',alto:'',prof:60,cuerpo_m2:'',fondo_m2:'',tapacanto_m:'',horas:{}}); render(); };
+  document.querySelectorAll('[data-rmfm]').forEach(e=>e.onclick=()=>{
+    d.medidas.splice(+e.dataset.rmfm,1); render();});
+
+  // Guardar
+  const sv = document.querySelector('[data-savefam]');
+  if(sv) sv.onclick = async()=>{
+    // Releer campos simples por si el usuario no disparó change
+    d.nombre = (document.getElementById('fam-nombre').value||'').trim();
+    d.categoria_id = document.getElementById('fam-cat').value||null;
+    d.apertura = document.getElementById('fam-apertura').value;
+    d.n_puertas = +document.getElementById('fam-npuertas').value||0;
+    d.receta_fija.fondo = {material_id: document.getElementById('fam-fondo').value||''};
+    d.receta_fija.kit_id = document.getElementById('fam-kit').value||'';
+    if(!d.nombre){ alert('Poné un nombre de familia.'); return; }
+    const payload = {nombre:d.nombre, categoria_id:d.categoria_id||null, apertura:d.apertura,
+      n_puertas:d.n_puertas, colores:d.colores, puerta_tipos:d.puerta_tipos,
+      receta_fija:d.receta_fija, roles:d.roles, medidas:d.medidas};
+    try{
+      const q = d.id ? sb.from('familias').update(payload).eq('id',d.id) : sb.from('familias').insert(payload);
+      const {error} = await q;
+      if(error) throw error;
+      state.famDraft = null; await loadAll();
+    }catch(err){ alert('No se pudo guardar: '+(err.message||err)); }
+  };
+}
+
 function bindEvents(){
   document.getElementById('btn-logout').onclick = doLogout;
   document.querySelectorAll('[data-nav]').forEach(e=>e.onclick=()=>{
-    state.tab=e.dataset.nav; state.productDetail=null; state.familiaFilter=''; render();});
+    state.tab=e.dataset.nav; state.productDetail=null; state.familiaFilter=''; state.famDraft=null; render();});
+  bindFamilias();
   document.querySelectorAll('[data-subtab]').forEach(e=>e.onclick=()=>{
     state.materialsSubtab=e.dataset.subtab; state.familiaFilter=''; render();});
   document.querySelectorAll('[data-familia]').forEach(e=>e.onclick=()=>{

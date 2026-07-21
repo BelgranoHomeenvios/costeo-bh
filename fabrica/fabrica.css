@@ -1,0 +1,261 @@
+/* ============================================================
+   MÓDULO FÁBRICA · hoja de estilos nueva
+   Mismo vocabulario de clases que el HTML original: no se toca
+   ni una línea del markup ni de los cálculos. Solo cambia cómo
+   se ve, usando los tokens de Belgrano Cost.
+   ============================================================ */
+
+.mod-fab{color:var(--ink);font-size:var(--t-bd)}
+.mod-fab .main{padding:0;max-width:none}
+.mod-fab .loading{padding:44px 20px;text-align:center;color:var(--mut);font-size:var(--t-md)}
+
+/* ---------- Encabezado de página ---------- */
+.mod-fab .page-eyebrow{
+  font-size:var(--t-xs);font-weight:700;color:var(--mut);
+  text-transform:uppercase;letter-spacing:.6px;margin-bottom:3px;
+}
+.mod-fab .page-title{font-size:var(--t-2xl);font-weight:700;letter-spacing:-.3px;margin-bottom:2px}
+.mod-fab .page-desc{color:var(--sec);font-size:var(--t-bd);margin-bottom:18px;max-width:70ch}
+
+/* ---------- Solapas internas ---------- */
+.mod-fab .subtabbar{display:flex;gap:7px;margin-bottom:14px;flex-wrap:wrap}
+.mod-fab .subtab{
+  padding:7px 14px;border-radius:var(--r-sm);font-size:var(--t-md);font-weight:600;
+  color:var(--sec);background:#fff;border:1px solid var(--line);transition:all .12s;
+}
+.mod-fab .subtab:hover{background:var(--gray-l);border-color:#D4DDE9}
+.mod-fab .subtab.active{background:var(--navy-800);color:#fff;border-color:var(--navy-800)}
+
+/* ---------- Chips de familia ---------- */
+.mod-fab .familia-bar{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap}
+.mod-fab .chip{
+  display:inline-flex;align-items:center;gap:5px;padding:4px 11px;border-radius:20px;
+  background:var(--gray-l);color:var(--sec);font-size:var(--t-sm);font-weight:600;
+  border:1px solid transparent;transition:all .12s;
+}
+.mod-fab .chip:hover{background:#E6ECF4}
+.mod-fab .chip-on{background:var(--blue-l);color:var(--blue-d);border-color:#CFE0FB}
+.mod-fab .chip-static{background:var(--gray-l);color:var(--sec);cursor:default}
+.mod-fab .chip-x{color:var(--mut);font-weight:700;padding:0 2px}
+.mod-fab .chip-x:hover{color:var(--red)}
+.mod-fab .pill{
+  display:inline-flex;align-items:center;padding:2.5px 9px;border-radius:20px;
+  background:var(--blue-l);color:var(--blue-d);font-size:var(--t-sm);font-weight:600;
+}
+
+/* ---------- Tarjetas ---------- */
+.mod-fab .card{
+  background:var(--card);border:1px solid var(--line);border-radius:var(--r);
+  box-shadow:var(--sh);padding:16px 18px;margin-bottom:14px;
+}
+.mod-fab .card-title{font-size:var(--t-lg);font-weight:650;letter-spacing:-.1px;margin-bottom:12px}
+.mod-fab .section-label{
+  font-size:var(--t-xs);font-weight:700;color:var(--mut);
+  text-transform:uppercase;letter-spacing:.6px;margin:16px 0 8px;
+}
+.mod-fab .section-label:first-child{margin-top:0}
+
+/* ---------- Tablas ---------- */
+.mod-fab table{width:100%;border-collapse:collapse;font-size:var(--t-md)}
+.mod-fab thead th{
+  background:#FAFCFE;color:var(--sec);font-size:var(--t-xs);font-weight:700;
+  text-transform:uppercase;letter-spacing:.45px;text-align:left;
+  padding:9px 12px;border-bottom:1px solid var(--line);white-space:nowrap;
+}
+.mod-fab tbody td{padding:9px 12px;border-bottom:1px solid var(--line2);vertical-align:middle}
+.mod-fab tbody tr:hover{background:#FAFCFE}
+.mod-fab .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.mod-fab .amt{font-variant-numeric:tabular-nums;font-weight:650;white-space:nowrap}
+.mod-fab .pct{font-variant-numeric:tabular-nums;color:var(--sec)}
+.mod-fab .label{color:var(--sec);font-weight:500}
+.mod-fab .helper{font-size:var(--t-sm);color:var(--mut);line-height:1.45;margin-top:4px}
+
+/* ---------- Botones ---------- */
+.mod-fab .btn-primary{
+  display:inline-flex;align-items:center;justify-content:center;gap:7px;
+  padding:8px 14px;border-radius:var(--r-sm);font-size:var(--t-md);font-weight:600;
+  background:var(--blue);color:#fff;border:1px solid var(--blue);transition:all .12s;
+}
+.mod-fab .btn-primary:hover{background:var(--blue-d);border-color:var(--blue-d)}
+.mod-fab .btn-primary:disabled{opacity:.45;cursor:not-allowed}
+.mod-fab .btn-sm{
+  padding:5px 11px;border-radius:var(--r-sm);font-size:var(--t-sm);font-weight:600;
+  background:#fff;color:var(--ink);border:1px solid var(--line);transition:all .12s;
+}
+.mod-fab .btn-sm:hover{background:var(--gray-l);border-color:#D4DDE9}
+.mod-fab .icon-btn{
+  padding:4px 9px;border-radius:5px;font-size:var(--t-sm);font-weight:600;
+  color:var(--sec);background:transparent;border:1px solid transparent;transition:all .12s;
+}
+.mod-fab .icon-btn:hover{background:var(--gray-l);color:var(--ink);border-color:var(--line)}
+.mod-fab .add-line-btn{
+  padding:6px 12px;border-radius:var(--r-sm);font-size:var(--t-sm);font-weight:600;
+  color:var(--blue);background:var(--blue-l);border:1px dashed #B5D0F5;transition:all .12s;
+}
+.mod-fab .add-line-btn:hover{background:#E1EDFC}
+.mod-fab .back-link{color:var(--blue);font-size:var(--t-md);font-weight:600;display:inline-block;margin-bottom:12px}
+
+/* ---------- Formularios ---------- */
+.mod-fab .field{display:flex;flex-direction:column;gap:5px;margin-bottom:12px}
+.mod-fab .field>label{font-size:var(--t-sm);font-weight:600;color:var(--sec)}
+.mod-fab input,.mod-fab select,.mod-fab textarea{
+  padding:7.5px 11px;border:1px solid var(--line);border-radius:var(--r-sm);
+  background:#fff;font-size:var(--t-md);outline:none;width:100%;
+  transition:border-color .12s,box-shadow .12s;font-variant-numeric:tabular-nums;
+}
+.mod-fab input:focus,.mod-fab select:focus,.mod-fab textarea:focus{
+  border-color:var(--blue);box-shadow:0 0 0 3px rgba(37,99,235,.1);
+}
+.mod-fab input[type=checkbox]{width:auto;accent-color:var(--blue)}
+.mod-fab .row-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.mod-fab .field-row{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}
+.mod-fab .check-row{display:flex;align-items:center;gap:7px;font-size:var(--t-md);margin-bottom:7px}
+.mod-fab .line-item-row{
+  display:flex;gap:9px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line2);
+}
+@media(max-width:760px){.mod-fab .row-2{grid-template-columns:1fr}}
+
+/* ---------- Avisos ---------- */
+.mod-fab .warn-box{
+  background:var(--amber-l);border:1px solid #F5DDB0;border-left:3px solid var(--amber);
+  border-radius:0;padding:11px 13px;font-size:var(--t-md);color:#7A4E08;margin-bottom:12px;
+}
+.mod-fab .missing-tag{
+  display:inline-flex;align-items:center;padding:2px 8px;border-radius:20px;
+  background:var(--red-l);color:var(--red);font-size:var(--t-sm);font-weight:600;
+}
+.mod-fab .empty{padding:40px 20px;text-align:center;color:var(--mut);font-size:var(--t-md)}
+.mod-fab .price-date{font-size:var(--t-sm);color:var(--mut)}
+
+/* ---------- Familias ---------- */
+.mod-fab .fam-step{
+  border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;margin-bottom:12px;background:#fff;
+}
+.mod-fab .fam-step-sub{font-size:var(--t-sm);color:var(--sec);margin-bottom:10px;line-height:1.45}
+.mod-fab .fam-editor{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:18px}
+.mod-fab .fam-editor-head{
+  display:flex;align-items:center;gap:12px;padding-bottom:14px;
+  border-bottom:1px solid var(--line2);margin-bottom:16px;
+}
+.mod-fab .fam-editor-foot{
+  display:flex;gap:9px;justify-content:flex-end;padding-top:14px;
+  border-top:1px solid var(--line2);margin-top:16px;
+}
+.mod-fab .fam-count{font-size:var(--t-sm);color:var(--mut);font-weight:600}
+.mod-fab .fam-tipo-row,.mod-fab .fam-suelto-row{
+  display:flex;gap:9px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line2);
+}
+.mod-fab .fam-tipo-tap{font-size:var(--t-sm);color:var(--sec)}
+.mod-fab .fam-tipo-new{margin-top:10px}
+.mod-fab .fam-role-chip{
+  display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:20px;
+  background:var(--gray-l);color:var(--sec);font-size:var(--t-sm);font-weight:600;
+}
+.mod-fab .fam-combos,.mod-fab .fam-roles-pick{display:flex;gap:7px;flex-wrap:wrap;margin-top:8px}
+.mod-fab .fam-combos-tit{font-size:var(--t-sm);font-weight:600;color:var(--sec);margin-bottom:6px}
+
+/* ---------- Medidas ---------- */
+.mod-fab .med-bloque{border:1px solid var(--line);border-radius:var(--r);padding:14px;margin-bottom:12px;background:#fff}
+.mod-fab .med-bloque-tit{font-size:var(--t-bd);font-weight:650;margin-bottom:3px}
+.mod-fab .med-bloque-sub{font-size:var(--t-sm);color:var(--sec);margin-bottom:10px}
+.mod-fab .med-bloque-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:11px}
+.mod-fab .med-ficha{border:1px solid var(--line);border-radius:var(--r);padding:14px;margin-bottom:11px;background:#fff}
+.mod-fab .med-ficha-head{display:flex;align-items:center;gap:10px;margin-bottom:11px}
+.mod-fab .med-item{
+  display:flex;align-items:center;gap:11px;padding:10px 12px;
+  border:1px solid var(--line);border-radius:var(--r-sm);margin-bottom:7px;background:#fff;transition:border-color .12s;
+}
+.mod-fab .med-item:hover{border-color:#C6D4E6}
+.mod-fab .med-item-main{flex:1;min-width:0}
+.mod-fab .med-item-tit{font-weight:650;font-size:var(--t-bd)}
+.mod-fab .med-item-sub{font-size:var(--t-sm);color:var(--sec);margin-top:1px}
+
+/* ---------- Matriz de variantes ---------- */
+.mod-fab .modelo-nav{display:flex;flex-direction:column;gap:3px}
+.mod-fab .modelo-btn{
+  display:flex;align-items:center;gap:8px;padding:8px 11px;border-radius:var(--r-sm);
+  font-size:var(--t-md);font-weight:600;color:var(--sec);text-align:left;
+  background:transparent;border:1px solid transparent;transition:all .12s;width:100%;
+}
+.mod-fab .modelo-btn:hover{background:var(--gray-l);color:var(--ink)}
+.mod-fab .modelo-btn.active{background:var(--blue-l);color:var(--blue-d);border-color:#CFE0FB}
+.mod-fab .modelo-n{margin-left:auto;font-size:var(--t-sm);color:var(--mut);font-weight:600}
+.mod-fab .espejo-bar{
+  display:flex;align-items:center;gap:10px;padding:11px 14px;background:#FAFCFE;
+  border:1px solid var(--line);border-radius:var(--r);margin-bottom:12px;flex-wrap:wrap;
+}
+.mod-fab .espejo-lbl{font-size:var(--t-sm);font-weight:600;color:var(--sec)}
+.mod-fab .espejo-de{font-size:var(--t-sm);color:var(--mut)}
+.mod-fab .matriz{width:100%;border-collapse:collapse;font-size:var(--t-md)}
+.mod-fab .matriz th{
+  background:#FAFCFE;color:var(--sec);font-size:var(--t-xs);font-weight:700;
+  text-transform:uppercase;letter-spacing:.45px;padding:9px 11px;
+  border-bottom:1px solid var(--line);text-align:center;
+}
+.mod-fab .matriz th:first-child{text-align:left}
+.mod-fab .dim-prof{font-weight:650;white-space:nowrap}
+.mod-fab .celda{
+  padding:9px 11px;border-bottom:1px solid var(--line2);text-align:center;
+  font-variant-numeric:tabular-nums;
+}
+.mod-fab .celda-costo{font-weight:650;color:var(--ink)}
+.mod-fab .celda-warn{color:var(--red);font-weight:600}
+
+/* ---------- Productos ---------- */
+.mod-fab .prod-layout{display:grid;grid-template-columns:190px 1fr;gap:16px;align-items:start}
+@media(max-width:860px){.mod-fab .prod-layout{grid-template-columns:1fr}}
+.mod-fab .prod-card{
+  background:var(--card);border:1px solid var(--line);border-radius:var(--r);
+  padding:13px 15px;margin-bottom:10px;transition:border-color .12s;
+}
+.mod-fab .prod-card:hover{border-color:#C6D4E6;box-shadow:var(--sh)}
+.mod-fab .prod-name{font-weight:650;font-size:var(--t-bd)}
+.mod-fab .prod-cost{font-size:var(--t-lg);font-weight:700;font-variant-numeric:tabular-nums;margin-top:3px}
+.mod-fab .var-selector{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.mod-fab .var-group{display:flex;flex-direction:column;gap:4px}
+.mod-fab .var-lbl{font-size:var(--t-sm);font-weight:600;color:var(--sec)}
+.mod-fab .var-badge{
+  display:inline-flex;padding:2px 8px;border-radius:20px;background:var(--gray-l);
+  color:var(--sec);font-size:var(--t-sm);font-weight:600;
+}
+
+/* ---------- Ficha de costo ---------- */
+.mod-fab .detail-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin-bottom:14px}
+.mod-fab .ticket{
+  background:var(--card);border:1px solid var(--line);border-radius:var(--r);
+  padding:16px 18px;box-shadow:var(--sh);
+}
+.mod-fab .breakdown-row{
+  display:flex;justify-content:space-between;gap:16px;padding:7px 0;
+  border-bottom:1px solid var(--line2);font-size:var(--t-md);
+}
+.mod-fab .breakdown-row:last-child{border-bottom:none}
+.mod-fab .total-row{
+  display:flex;justify-content:space-between;gap:16px;padding:11px 0 0;
+  margin-top:7px;border-top:1.5px solid var(--line);font-size:var(--t-lg);font-weight:700;
+}
+.mod-fab .prov-head{font-size:var(--t-sm);font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.5px;margin-bottom:7px}
+.mod-fab .prov-row{display:flex;gap:9px;align-items:center;padding:6px 0}
+
+/* ---------- Modal ---------- */
+.mod-fab .modal-backdrop{
+  position:fixed;inset:0;background:rgba(12,32,54,.42);z-index:60;
+  display:flex;align-items:center;justify-content:center;padding:20px;
+}
+.mod-fab .modal{
+  background:#fff;border-radius:12px;box-shadow:var(--sh-lg);
+  width:min(600px,94vw);max-height:88vh;display:flex;flex-direction:column;
+  position:static;transform:none;opacity:1;pointer-events:auto;
+}
+.mod-fab .modal-wide{width:min(880px,95vw)}
+.mod-fab .modal-head{
+  padding:16px 20px;border-bottom:1px solid var(--line2);
+  display:flex;align-items:center;gap:12px;
+}
+.mod-fab .modal-title{font-size:var(--t-lg);font-weight:650;flex:1}
+.mod-fab .modal-close{
+  width:29px;height:29px;border-radius:var(--r-sm);display:grid;place-items:center;
+  color:var(--sec);font-size:17px;transition:background .12s;
+}
+.mod-fab .modal-close:hover{background:var(--gray-l);color:var(--ink)}
+.mod-fab .modal>form,.mod-fab .modal>div:not(.modal-head){padding:18px 20px;overflow-y:auto}

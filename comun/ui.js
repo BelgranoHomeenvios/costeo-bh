@@ -248,7 +248,7 @@ const Router = (() => {
        {id:'simulador',    label:'Simulador de precios',    icon:'sim'},
        {id:'costos',       label:'Actualización de costos', icon:'refresh'},
        {id:'categorias',   label:'Categorías y reglas',     icon:'tag'},
-       {id:'pendientes',   label:'Pendientes',              icon:'clock', badge:()=>Views.nPendientes()},
+       {id:'pendientes',   label:'Pendientes',              icon:'clock', badge:()=>(typeof Views!=='undefined'?Views.nPendientes():0)},
        {id:'historial',    label:'Historial',               icon:'hist'},
        {id:'config',       label:'Configuración',           icon:'gear'},
        {id:'importar',     label:'Importar / Exportar',     icon:'imp'}
@@ -273,6 +273,10 @@ const Router = (() => {
     const pills = document.getElementById('bhPills');
     if(pills) pills.innerHTML = enPortada ? '' : MODULOS.map(m =>
       `<button class="bh-pill ${m.id===mod.id?'on':''}" onclick="Router.abrirModulo('${m.id}')">${m.pill}</button>`).join('');
+
+    /* En la entrada no hay módulo que configurar */
+    const btnCfg = document.getElementById('btnConfig');
+    if(btnCfg) btnCfg.style.display = enPortada ? 'none' : '';
 
     /* --- Usuario --- */
     const mail = (Supa.usuario||{}).email || '';
@@ -330,7 +334,11 @@ const Router = (() => {
       try{ return localStorage.getItem(MEM) || 'prov'; }catch(e){ return 'prov'; }
     },
     /** Configuración del módulo en el que estés parado. */
-    irAConfig(){ Router.go(esPortada(actual) ? 'config' : (esFab(actual) ? 'fab.config' : 'config')); },
+    irAConfig(){
+      /* Desde la entrada no hay pantalla de configuración: se entra al módulo. */
+      if((window.PAGINA||'portada') === 'portada'){ Nav.ir(Nav.raiz() + 'proveedores/'); return; }
+      Router.go(esFab(actual) ? 'fab.config' : 'config');
+    },
     /** Volver a la elección de módulo (es la página de entrada). */
     inicio(){
       if((window.PAGINA||'portada') === 'portada') Router.go('portada');

@@ -12,7 +12,7 @@ const LAYOUT = `<div class="app">
       <div class="bh-user-rol">Dirección</div>
     </div>
     <div class="bh-avatar" id="topAvatar">BH</div>
-    <button class="bh-btn" onclick="Router.irAConfig()">Configuración</button>
+    <button class="bh-btn" id="btnConfig" onclick="Router.irAConfig()">Configuración</button>
     <button class="bh-btn" onclick="Acceso.salir()">Salir</button>
   </header>
   <div class="bcost-body">

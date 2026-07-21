@@ -1,0 +1,33 @@
+const TIERS = [
+  {key:'laqueado', label:'Laqueado'},
+  {key:'comboBlanco', label:'Combinado + Blanco'},
+  {key:'comboParaiso', label:'Combinado + Paraíso'},
+  {key:'paraiso', label:'Paraíso'}
+];
+const DEFAULT_INDICES = { laqueado:139, comboBlanco:139, comboParaiso:141, paraiso:141 };
+const EXTRA_CATEGORIAS = [{"id": "alzada", "nombre": "Alzada", "targetNegro": 2.08, "targetOtro": 2.0, "campos": [{"label": "Estructura", "opciones": ["Blanca", "Negra", "Paraíso"]}, {"label": "Frente", "opciones": ["Blanco", "Negro", "Paraíso"]}], "adicionales": []}, {"id": "biblioteca", "nombre": "Biblioteca", "targetNegro": 2.08, "targetOtro": 2.0, "campos": [{"label": "Estructura", "opciones": ["Blanca", "Negra", "Paraíso"]}, {"label": "Frente", "opciones": ["Blanco", "Negro", "Paraíso"]}], "adicionales": []}, {"id": "botinero", "nombre": "Botinero", "targetNegro": 2.08, "targetOtro": 2.0, "campos": [{"label": "Estructura", "opciones": ["Blanca", "Negra", "Paraíso"]}, {"label": "Frente", "opciones": ["Blanco", "Negro", "Paraíso"]}], "adicionales": []}, {"id": "comodas", "nombre": "Cómodas", "targetNegro": 2.08, "targetOtro": 2.0, "campos": [{"label": "Estructura", "opciones": ["Blanca", "Negra", "Paraíso"]}, {"label": "Detalle", "opciones": ["Hueco blanco", "Hueco negro", "Hueco paraíso"]}], "adicionales": []}, {"id": "chiffonier", "nombre": "Chiffonier", "targetNegro": 2.08, "targetOtro": 2.0, "campos": [{"label": "Estructura", "opciones": ["Blanca", "Negra", "Paraíso"]}, {"label": "Detalle", "opciones": ["Hueco blanco", "Hueco negro", "Hueco paraíso"]}], "adicionales": []}, {"id": "estante-flotante", "nombre": "Estante flotante", "targetNegro": 2.08, "targetOtro": 2.0, "campos": [{"label": "Color de estante", "opciones": ["Blanco", "Negro", "Paraíso"]}], "adicionales": []}, {"id": "mesas-luz", "nombre": "Mesas de luz", "targetNegro": 2.08, "targetOtro": 2.0, "campos": [{"label": "Estructura", "opciones": ["Blanca", "Negra", "Paraíso"]}, {"label": "Frente", "opciones": ["Blanco", "Negro", "Paraíso"]}], "adicionales": []}, {"id": "ratona", "nombre": "Ratona", "targetNegro": 2.08, "targetOtro": 2.0, "campos": [{"label": "Estructura", "opciones": ["Blanca", "Negra", "Paraíso"]}, {"label": "Modulo", "opciones": ["Blanco", "Negro", "Paraíso"]}], "adicionales": []}, {"id": "ratona-circular", "nombre": "Ratona circular", "targetNegro": 2.08, "targetOtro": 2.0, "campos": [{"label": "Estructura", "opciones": ["Blanca", "Negra", "Paraíso"]}, {"label": "Frente", "opciones": ["Blanco", "Negro", "Paraíso"]}], "adicionales": []}, {"id": "recibidor", "nombre": "Recibidor", "targetNegro": 2.08, "targetOtro": 2.0, "campos": [{"label": "Estructura", "opciones": ["Blanca", "Negra", "Paraíso"]}, {"label": "Frente", "opciones": ["Blanco", "Negro", "Paraíso"]}], "adicionales": []}, {"id": "respaldo", "nombre": "Respaldo", "targetNegro": 2.08, "targetOtro": 2.0, "campos": [{"label": "Tipo de respaldo", "opciones": []}, {"label": "Estructura", "opciones": ["Blanca", "Negra", "Paraíso"]}], "adicionales": []}, {"id": "torre-cerrada", "nombre": "Torre cerrada", "targetNegro": 2.08, "targetOtro": 2.0, "campos": [{"label": "Estructura", "opciones": ["Blanca", "Negra", "Paraíso"]}, {"label": "Frente", "opciones": ["Blanco", "Negro", "Paraíso"]}], "adicionales": []}, {"id": "vajilleros", "nombre": "Vajilleros", "targetNegro": 2.08, "targetOtro": 2.0, "campos": [{"label": "Estructura", "opciones": ["Blanca", "Negra", "Paraíso"]}, {"label": "Frente", "opciones": ["Blanco", "Negro", "Paraíso"]}], "adicionales": []}];
+const EXTRA_COSTOS_BASE = []; // confidencial: se carga desde costos-base.json
+const DEFAULT_CATEGORIAS = [
+  { id:'escritorios', nombre:'Escritorios', targetNegro:2.08, targetOtro:2.00,
+    campos:[
+      {label:'Estructura', opciones:['Blanca','Negra','Paraíso']},
+      {label:'Frente', opciones:['Blanco','Negro','Paraíso']}
+    ],
+    adicionales:[
+      {nombre:'Ranurado', tipo:'pct', pct:5},
+      {nombre:'Patas macizas', tipo:'pct', pct:5},
+      {nombre:'Hierros', tipo:'fijoPorMedida', valoresPorMedida:{'100':90000,'120':100000,'140':110000,'160':130000,'180':140000,'200':150000}}
+    ]
+  }
+].concat(EXTRA_CATEGORIAS);
+const DEFAULT_MODELO_ADIC = [
+  {categoriaId:'escritorios', modelo:'Escritorio Belice', nombres:['Ranurado']},
+  {categoriaId:'escritorios', modelo:'Escritorio Chile', nombres:['Ranurado','Patas macizas']},
+  {categoriaId:'escritorios', modelo:'Escritorio Guatemala', nombres:['Ranurado']},
+  {categoriaId:'escritorios', modelo:'Escritorio Jamaica', nombres:['Ranurado']},
+  {categoriaId:'escritorios', modelo:'Escritorio Nicaragua', nombres:['Ranurado']},
+  {categoriaId:'escritorios', modelo:'Escritorio Honduras', nombres:['Hierros']},
+  {categoriaId:'escritorios', modelo:'Escritorio Paraguay', nombres:['Hierros']},
+  {categoriaId:'escritorios', modelo:'Escritorio Cuba', nombres:['Hierros']}
+];
+const DEFAULT_COSTOS_BASE = []; // idem

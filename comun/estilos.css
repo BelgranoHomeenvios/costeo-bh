@@ -281,6 +281,12 @@ select.inp{cursor:pointer;padding-right:26px;
 .kv-edit dd{padding:3px 0;display:flex;justify-content:flex-end}
 .inp-sm{padding:5px 8px;font-size:12px;width:100%;max-width:200px}
 select.inp-sm{max-width:200px}
+
+/* Rentabilidad: fila enfocada del ranking */
+.tbl tbody tr.sel-row{background:var(--blue-l)}
+.tbl tbody tr.sel-row:hover{background:#E4EEFC}
+.badge.clickable{cursor:pointer}
+.badge.clickable:hover{filter:brightness(.95)}
 .tbl tbody td{padding:9px 12px;border-bottom:1px solid var(--line2);vertical-align:middle}
 .tbl tbody tr{transition:background .1s}
 .tbl tbody tr:hover{background:#FAFCFE}

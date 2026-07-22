@@ -594,6 +594,7 @@ const Views = (() => {
             <dt>Costo base ${c.baseDeTabla?'(tabla)':'(manual)'}</dt><dd>${money(c.base)}</dd>
             <dt>Adicionales % <span class="hint" style="font-weight:400">(por reglas)</span></dt><dd>${c.adicPct?pct1(c.adicPct):'—'}</dd>
             <dt>Adicionales fijos <span class="hint" style="font-weight:400">(por reglas)</span></dt><dd>${c.adicFijo?money(c.adicFijo):'—'}</dd>
+            ${c.costoHierro?`<dt>Hierro <span class="hint" style="font-weight:400">(largo ${c.hierro.largo})</span></dt><dd>${money(c.costoHierro)}</dd>`:''}
             <dt>Adicional de este producto</dt><dd><input class="inp inp-sm" type="number" id="fAdicional" value="${p.adicional||''}" placeholder="0"></dd>
             <dt>Ajuste manual</dt><dd><input class="inp inp-sm" type="number" id="fAjuste" value="${p.ajusteManual||''}" placeholder="0"></dd>
             <dt style="border-top:1px solid var(--line);padding-top:7px">Costo final</dt>

@@ -248,7 +248,7 @@ Object.assign(Views, {
         <th>Medida</th>${TIERS.map(t=>`<th class="num">${esc(t.label)}</th>`).join('')}
       </tr></thead><tbody>${medidas.map(m=>`<tr>
         <td class="strong">${esc(m)}</td>
-        ${TIERS.map(t=>{const v=get(m,t.id);
+        ${TIERS.map(t=>{const v=get(m,t.key);
           return `<td class="num ${v?'':'t-mut'}">${v?money(v):'—'}</td>`;}).join('')}
       </tr>`).join('')}</tbody></table></div></div>`}`;
 

@@ -28,6 +28,7 @@ const pctS  = n => { const v=(n*100); return (v>0?'+':'')+v.toFixed(1).replace('
 const mk    = n => n>0 ? n.toFixed(2).replace('.',',')+'x' : '—';
 const esc   = s => String(s??'').replace(/[&<>"']/g, m =>
   ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+const escJs = s => String(s??'').replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;');
 const fecha = iso => { const d=new Date(iso);
   return d.toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'})+' '+
          d.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}); };

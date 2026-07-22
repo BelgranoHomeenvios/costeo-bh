@@ -6,7 +6,7 @@ const Views = (() => {
   /* filtros persistentes entre navegaciones */
   const F = {
     prod:{cat:'', modelo:'', estado:'', medida:'', term:'', vars:{}, q:'',
-          soloAumentar:false, sospechoso:false, negativo:false, sinPrecio:false,
+          soloAumentar:false, incompletos:false, revisar:false,
           sort:'aumentoPct', dir:-1, page:0, per:50},
     rent:{cat:''},
     sim:{prodId:null, costo:null, precio:null, desc:null, target:null},
@@ -210,7 +210,10 @@ const Views = (() => {
      ============================================================ */
   function irProductos(f){ Object.assign(F.prod, {page:0}, f); Router.go('productos'); }
 
-  function filtrarProd(){
+  /** Alcance actual: solo los filtros universales (categoría, estado, medida,
+   *  terminación, variantes, búsqueda) — sin los botones de acción. Sirve tanto
+   *  para armar la tabla como para calcular el resumen de arriba. */
+  function alcanceProd(){
     const f = F.prod;
     let rows = calcAll();
     if(f.cat)    rows = rows.filter(({p})=>p.categoriaId===f.cat);
@@ -221,17 +224,25 @@ const Views = (() => {
     Object.entries(f.vars||{}).forEach(([k,v]) => {
       if(v) rows = rows.filter(({p}) => String((p.variantes||{})[k]||'') === v);
     });
-    if(f.soloAumentar) rows = rows.filter(({c})=>c.aumentoPct>0.001);
-    if(f.sospechoso)   rows = rows.filter(({c})=>c.tieneCosto && c.markup > Data.s.config.umbralSospecha);
-    if(f.sinPrecio)    rows = rows.filter(({c})=>!c.lista);
-    if(f.negativo)     rows = rows.filter(({c})=>c.tieneCosto && c.ganancia<0);
     if(f.q){
       const q = f.q.toLowerCase();
       rows = rows.filter(({p}) => (p.modelo||'').toLowerCase().includes(q)
         || variantesTxt(p).toLowerCase().includes(q) || (p.medida||'').includes(q));
     }
+    return rows;
+  }
+
+  function filtrarProd(){
+    const f = F.prod;
+    let rows = alcanceProd();
+    if(f.soloAumentar) rows = rows.filter(({c})=>c.aumentoPct>0.001);
+    if(f.incompletos)  rows = rows.filter(({c})=>!c.tieneCosto || !c.lista);
+    if(f.revisar)      rows = rows.filter(({c})=>c.tieneCosto && (c.markup>Data.s.config.umbralSospecha || c.ganancia<0));
     const k = f.sort;
     rows.sort((a,b)=>{
+      if(k==='categoriaId') return f.dir * Data.catNombre(a.p.categoriaId).localeCompare(Data.catNombre(b.p.categoriaId));
+      if(k==='medida') return f.dir * (medSort(a.p.medida)-medSort(b.p.medida));
+      if(k==='variantes') return f.dir * variantesTxt(a.p).localeCompare(variantesTxt(b.p));
       const va = k in a.c ? a.c[k] : (a.p[k]||''), vb = k in b.c ? b.c[k] : (b.p[k]||'');
       if(typeof va === 'string') return f.dir * va.localeCompare(vb);
       return f.dir * ((va||0)-(vb||0));
@@ -246,16 +257,22 @@ const Views = (() => {
     const t = Calc.resumen(rows);
     const pag = rows.slice(f.page*f.per, (f.page+1)*f.per);
     const nPag = Math.ceil(rows.length/f.per);
-    const todo = calcAll();
-    const rowsSosp = todo.filter(({c})=>c.tieneCosto && c.markup>cfg.umbralSospecha).length;
-    const rowsNeg  = todo.filter(({c})=>c.tieneCosto && c.ganancia<0).length;
-    const rowsSinP = todo.filter(({c})=>!c.lista).length;
-    const rowsAum  = todo.filter(({c})=>c.aumentoPct>0.001).length;
+
+    /* Resumen de arriba: reacciona a los 5 filtros universales (categoría,
+       estado, medida, terminación, búsqueda), no a los botones de acción. */
+    const alcance = alcanceProd();
+    const alcCosteados = alcance.filter(({c})=>c.tieneCosto);
+    const pctCosteado = alcance.length ? Math.round(alcCosteados.length/alcance.length*100) : 0;
+    const margenProm = alcCosteados.length
+      ? alcCosteados.reduce((s,{c})=>s+c.margen,0)/alcCosteados.length : 0;
+    const rowsAum  = alcance.filter(({c})=>c.aumentoPct>0.001).length;
+    const rowsInc  = alcance.filter(({c})=>!c.tieneCosto || !c.lista).length;
+    const rowsRev  = alcance.filter(({c})=>c.tieneCosto && (c.markup>cfg.umbralSospecha || c.ganancia<0)).length;
+    const nombreAlcance = f.cat ? Data.catNombre(f.cat) : 'todas las categorías';
 
     /* --- Opciones en cascada: cada filtro se calcula sobre lo que dejan pasar
        los anteriores, así nunca ofrece una combinación que no existe. --- */
     const enCat = Data.s.productos.filter(p=>!f.cat||p.categoriaId===f.cat);
-    const modelos = [...new Set(enCat.map(p=>p.modelo).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
     const enMod = enCat.filter(p=>!f.modelo||p.modelo===f.modelo);
     const medidas = [...new Set(enMod.map(p=>p.medida).filter(Boolean))].sort((a,b)=>medSort(a)-medSort(b));
     const enMed = enMod.filter(p=>!f.medida||(p.medida||'')===f.medida);
@@ -276,33 +293,31 @@ const Views = (() => {
 
     const tbl = !pag.length ? UI.empty('Sin resultados','Probá cambiando los filtros.')
       : `<div class="tbl-wrap"><table class="tbl"><thead><tr>
-        ${[['modelo','Modelo',0],['','Variantes',0],['','Medida',0],
-           ['costoFinal','Costo final',1],['lista','P. lista',1],['efectivo','P. efectivo',1],
-           ['ganancia','Ganancia',1],['margen','Margen',1],['markup','Markup vs objetivo',0],
+        ${[['categoriaId','Categoría',0],['modelo','Modelo',0],['medida','Medida',0],['variantes','Variantes',0],
+           ['costoFinal','Costo',1],['efectivo','P. efectivo',1],
+           ['ganancia','Ganancia',1],['margen','Margen',1],['markup','Markup vs objetivo',1],
            ['aumentoPct','Aum. sugerido',1],['estado','Estado',0]]
-          .map(([k,l,n])=>`<th class="${n?'num ':''}${k?'sortable ':''}${k===f.sort?'sorted':''}"
-            ${k?`onclick="Views.sortProd('${k}')"`:''}>${l}${k?`<span class="arr">${
-            k===f.sort?(f.dir>0?'↑':'↓'):'↕'}</span>`:''}</th>`).join('')}
+          .map(([k,l,n])=>`<th class="${n?'num ':''}sortable ${k===f.sort?'sorted':''}"
+            onclick="Views.sortProd('${k}')">${l}<span class="arr">${
+            k===f.sort?(f.dir>0?'↑':'↓'):'↕'}</span></th>`).join('')}
       </tr></thead><tbody>${pag.map(({p,c})=>`
         <tr class="clickable" onclick="Views.ficha('${p.id}')">
+          <td class="t-sec">${esc(Data.catNombre(p.categoriaId))}</td>
           <td class="strong">${esc(p.modelo)}</td>
-          <td class="t-sec" style="font-size:11.5px">${esc(variantesTxt(p))}</td>
           <td class="t-sec">${esc(p.medida||'—')}</td>
+          <td class="t-sec" style="font-size:11.5px">${esc(variantesTxt(p))}</td>
           <td class="num">${UI.cellEdit(p.id,'costo',c.costoFinal, c.baseDeTabla?'de tabla':'sin costo')}</td>
-          <td class="num">${UI.cellEdit(p.id,'precio',c.lista,'sin precio')}</td>
-          <td class="num t-sec">${money(c.efectivo)}</td>
+          <td class="num">${UI.cellEdit(p.id,'efectivo',c.efectivo,'sin precio')}</td>
           <td class="num ${c.ganancia<0?'t-red':''}">${c.tieneCosto?money(c.ganancia):'<span class="t-mut">—</span>'}</td>
           <td class="num ${c.tieneCosto&&c.margen<cfg.margenMinimo?'t-red':''}">${c.tieneCosto?pct1(c.margen):'<span class="t-mut">—</span>'}</td>
-          <td>${c.tieneCosto?`<div style="display:flex;align-items:center;gap:9px">
-            <span class="strong" style="width:44px">${mk(c.markup)}</span>${UI.ruler(c.markup,c.target)}
-          </div>`:'<span class="t-mut">—</span>'}</td>
+          <td class="num strong">${c.tieneCosto?mk(c.markup):'<span class="t-mut">—</span>'}</td>
           <td class="num ${c.aumentoPct>0.001?'t-red strong':'t-mut'}">${c.aumentoPct>0.001?pctS(c.aumentoPct):'—'}</td>
           <td>${UI.badge(c.estado)}</td>
         </tr>`).join('')}</tbody>
         <tfoot><tr>
-          <td colspan="3">${rows.length.toLocaleString('es-AR')} productos filtrados</td>
+          <td colspan="4">${rows.length.toLocaleString('es-AR')} productos filtrados</td>
           <td class="num">${money(t.costoProm)}</td>
-          <td class="num">${money(t.precioProm)}</td><td></td>
+          <td class="num">${money(t.precioProm*(1-cfg.descuento))}</td>
           <td class="num">${money(t.gananciaTotal)}</td>
           <td class="num">${pct1(t.margenProm)}</td>
           <td class="num">${mk(t.markupProm)}</td>
@@ -317,43 +332,56 @@ const Views = (() => {
         <button class="btn" onclick="Views.exportarCSV()">${Icon('dl')} Exportar CSV</button>
       </div>
       <div class="card mb"><div class="card-body" style="padding:14px 16px">
-        <div class="filters" style="margin-bottom:11px">
-          ${[['sospechoso','Markup sospechoso', rowsSosp],
-             ['negativo','Ganancia negativa', rowsNeg],
-             ['sinPrecio','Sin precio', rowsSinP],
-             ['soloAumentar','Para aumentar', rowsAum]]
-            .map(([k,l,n])=>`<button class="btn btn-sm ${f[k]?'btn-blue':''}"
-              onclick="Views.toggleProd('${k}')">${esc(l)}
-              <span style="opacity:.75">${n.toLocaleString('es-AR')}</span></button>`).join('')}
-          <span class="hint" style="margin-left:4px">accesos rápidos a lo que hay que revisar</span>
-        </div>
-        <div class="filters">
+        <div class="filters" style="margin-bottom:14px">
           ${selCat('fpCat', f.cat, 'onchange="Views.setProd(\'cat\',this.value)"')}
-          <select class="inp" style="max-width:230px" onchange="Views.setProd('modelo',this.value)">
-            <option value="">Todos los modelos</option>
-            ${modelos.map(m=>`<option value="${esc(m)}" ${f.modelo===m?'selected':''}>${esc(m)}</option>`).join('')}
+          <select class="inp" onchange="Views.setProd('estado',this.value)">
+            <option value="">Todos los estados</option>
+            ${Object.entries(ESTADO).map(([k,v])=>`<option value="${k}" ${f.estado===k?'selected':''}>${v.lbl}</option>`).join('')}
           </select>
           <select class="inp" onchange="Views.setProd('medida',this.value)">
             <option value="">Todas las medidas</option>
             ${medidas.map(m=>`<option value="${esc(m)}" ${f.medida===m?'selected':''}>${esc(m)}</option>`).join('')}
           </select>
-          ${varSel}
           <select class="inp" onchange="Views.setProd('term',this.value)">
             <option value="">Todas las terminaciones</option>
-            ${TIERS.map(t=>`<option value="${t.id}" ${f.term===t.id?'selected':''}>${esc(t.label)}</option>`).join('')}
+            ${TIERS.map(tr=>`<option value="${tr.id}" ${f.term===tr.id?'selected':''}>${esc(tr.label)}</option>`).join('')}
           </select>
-          <select class="inp" onchange="Views.setProd('estado',this.value)">
-            <option value="">Todos los estados</option>
-            ${Object.entries(ESTADO).map(([k,v])=>`<option value="${k}" ${f.estado===k?'selected':''}>${v.lbl}</option>`).join('')}
-          </select>
-          <input class="inp" style="flex:1;min-width:180px" placeholder="Buscar modelo o variante…"
+          <input class="inp" style="flex:1;min-width:180px" placeholder="Buscar producto…"
             value="${esc(f.q)}" oninput="Views.setProd('q',this.value)">
           <select class="inp" onchange="Views.setProd('per',+this.value)" title="Filas por página">
             ${[50,100,200,500,1000].map(n=>`<option value="${n}" ${f.per===n?'selected':''}>${n} por página</option>`).join('')}
           </select>
-          ${(f.cat||f.modelo||f.estado||f.medida||f.term||f.q||f.soloAumentar||f.sospechoso
-             ||f.negativo||f.sinPrecio||Object.keys(f.vars||{}).length)
+          ${(f.cat||f.modelo||f.estado||f.medida||f.term||f.q||f.soloAumentar||f.incompletos
+             ||f.revisar||Object.keys(f.vars||{}).length)
             ?`<button class="btn btn-sm btn-ghost" onclick="Views.limpiarProd()">Limpiar filtros</button>`:''}
+        </div>
+        ${f.cat && varSel ? `<div class="filters" style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--line2)">
+          <span class="hint" style="align-self:center">Atributos de ${esc((Data.cat(f.cat)||{}).nombre||'')}:</span>
+          ${varSel}
+        </div>` : ''}
+        <div class="hint" style="margin-bottom:6px">Estado general — ${esc(nombreAlcance)}</div>
+        <div class="filters" style="margin-bottom:14px">
+          <div class="card" style="flex:1;min-width:150px;padding:11px 14px">
+            <div class="hint">Productos cargados</div>
+            <div style="font-size:19px;font-weight:700">${alcance.length.toLocaleString('es-AR')}</div>
+          </div>
+          <div class="card" style="flex:1;min-width:150px;padding:11px 14px">
+            <div class="hint">% costeado</div>
+            <div style="font-size:19px;font-weight:700">${pctCosteado}%</div>
+          </div>
+          <div class="card" style="flex:1;min-width:150px;padding:11px 14px">
+            <div class="hint">Margen promedio</div>
+            <div style="font-size:19px;font-weight:700">${pct1(margenProm)}</div>
+          </div>
+        </div>
+        <div class="hint" style="margin-bottom:6px">Necesita tu atención en ${esc(nombreAlcance)} — clic para filtrar</div>
+        <div class="filters">
+          ${[['soloAumentar','Requieren aumentar', rowsAum],
+             ['incompletos','Incompletos', rowsInc],
+             ['revisar','Por revisar', rowsRev]]
+            .map(([k,l,n])=>`<button class="btn btn-sm ${f[k]?'btn-blue':''}"
+              onclick="Views.toggleProd('${k}')">${esc(l)}
+              <span style="opacity:.75">${n.toLocaleString('es-AR')}</span></button>`).join('')}
         </div>
       </div></div>
       <div class="card">${tbl}
@@ -576,10 +604,12 @@ const Views = (() => {
       el.value = orig?orig.toLocaleString('es-AR'):''; return; }
 
     const aplicar = () => {
-      if(campo === 'costo') p.costoManual = nuevo; else p.precioLista = nuevo;
+      if(campo === 'costo') p.costoManual = nuevo;
+      else if(campo === 'efectivo') p.precioLista = Math.round(nuevo / (1 - Data.s.config.descuento));
+      else p.precioLista = nuevo;
       Data.saveProducto(p);
       Data.log('Edición manual', `${p.modelo} ${p.medida||''}`,
-        `${campo==='costo'?'costo':'precio'} ${money(orig)} → ${money(nuevo)}`, p.id);
+        `${campo==='costo'?'costo':campo==='efectivo'?'precio efectivo':'precio'} ${money(orig)} → ${money(nuevo)}`, p.id);
       invalidar();
       el.dataset.orig = nuevo;
       el.value = nuevo.toLocaleString('es-AR');
@@ -594,7 +624,7 @@ const Views = (() => {
     const ratio = orig>0 ? nuevo/orig : 1;
     if(orig>0 && (ratio>5 || ratio<0.2)){
       UI.confirm('Confirmar cambio grande',
-        `Estás cambiando el ${campo==='costo'?'costo':'precio'} de
+        `Estás cambiando el ${campo==='costo'?'costo':campo==='efectivo'?'precio efectivo':'precio'} de
          <b>${esc(p.modelo)} ${esc(p.medida||'')}</b><br><br>
          de <b>${money(orig)}</b> a <b>${money(nuevo)}</b>
          (${ratio>1?'×'+ratio.toFixed(1):'÷'+(1/ratio).toFixed(1)}).<br><br>
@@ -751,7 +781,7 @@ const Views = (() => {
     sortProd(k){ if(F.prod.sort===k) F.prod.dir*=-1; else {F.prod.sort=k; F.prod.dir=-1;} Router.refresh(); },
     toggleProd(k){ F.prod[k] = !F.prod[k]; F.prod.page=0; Router.refresh(); },
     limpiarProd(){ Object.assign(F.prod,{cat:'',modelo:'',estado:'',medida:'',term:'',vars:{},q:'',
-      soloAumentar:false,sospechoso:false,negativo:false,sinPrecio:false,page:0}); Router.refresh(); },
+      soloAumentar:false,incompletos:false,revisar:false,page:0}); Router.refresh(); },
     pag(d){ F.prod.page+=d; Router.refresh(); window.scrollTo(0,0); },
     irPag(n){ F.prod.page=Math.max(0,n); Router.refresh(); window.scrollTo(0,0); },
     setSim(k,v){ F.sim[k]=parseFloat(v); Router.refresh(); },

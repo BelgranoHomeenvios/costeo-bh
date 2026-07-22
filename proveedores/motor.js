@@ -18,7 +18,8 @@ const Data = (() => {
     redondeo:1000,           // redondeo del precio sugerido
     adicionales:[],          // extras por modelo: {id,nombre,tipo:'pct'|'fijo',valor,tiersDefault:[]}
     modeloReglas:{},         // regla por modelo: 'catId::modelo' → {fuente,adicionales:[{id,tiers}]}
-    hierros:[]               // lista única: {id,largo,alto,prof,precio,categorias:[],modelos:[]}
+    hierros:[],              // lista única: {id,largo,alto,prof,precio,categorias:[],modelos:[]}
+    hierrosPendientes:[]     // modelos que llevan hierro pero falta cargar el precio
   };
 
   const s = {
@@ -271,18 +272,20 @@ const Calc = (() => {
   }
 
   /** Hierro que le corresponde a un producto: debe estar asignado a su
-   *  categoría o modelo, y coincidir largo + alto con la medida del producto. */
+   *  categoría o modelo, y coincidir el LARGO con la medida del producto.
+   *  El alto del hierro es informativo (no se usa para el match), porque
+   *  el hierro es una pieza aparte cuya altura no es la del mueble. */
   function hierroDe(p){
     const hierros = Data.s.config.hierros || [];
     if(!hierros.length) return null;
-    const [lp, ap] = largoAlto(p.medidaCosteo || p.medida);
+    const [lp] = largoAlto(p.medidaCosteo || p.medida);
     if(lp==null) return null;
     const modelo = (p.modelo||'').toLowerCase();
     return hierros.find(h=>{
       const aplicaCat = (h.categorias||[]).includes(p.categoriaId);
       const aplicaMod = (h.modelos||[]).some(m => m && modelo.includes(String(m).toLowerCase()));
       if(!aplicaCat && !aplicaMod) return false;
-      return Number(h.largo)===lp && Number(h.alto)===ap;
+      return Number(h.largo)===lp;
     }) || null;
   }
 

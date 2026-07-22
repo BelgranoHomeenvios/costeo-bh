@@ -431,11 +431,30 @@ Object.assign(Views, {
             <input class="inp inp-sm" style="max-width:none" placeholder="Ej: 100x20" value="${esc(st.q)}"
               oninput="Views.setHierroFiltro('q',this.value)"></div>
           <div style="align-self:flex-end">
+          <div style="align-self:flex-end;display:flex;gap:6px">
+            <button class="btn btn-sm" onclick="Views.pegarHierros()">${Icon('imp')} Pegar</button>
             <button class="btn btn-blue btn-sm" onclick="Views.editarHierro(-1)">+ nuevo hierro</button></div>
         </div>
       </div></div>
 
       ${st.form!=null ? Views.formHierro() : ''}
+
+      ${(()=>{ const pend = Data.s.config.hierrosPendientes||[];
+        return `<div class="card mb" ${pend.length?'style="border-color:var(--amber)"':''}>
+          <div class="card-body" style="padding:12px 16px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+              <b class="${pend.length?'t-amber':''}" style="font-size:13px">${pend.length
+                ? `⚠ ${pend.length} modelos llevan hierro pero falta cargar el precio`
+                : 'Modelos que llevan hierro sin precio cargado'}</b>
+            </div>
+            ${pend.length?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+              ${pend.map((m,i)=>`<span class="chip chip-mod">◆ ${esc(m)}
+                <span style="cursor:pointer" onclick="Views.quitarHierroPendiente(${i})">✕</span></span>`).join(' ')}
+            </div>`:''}
+            <input class="inp inp-sm" style="max-width:none" placeholder="Agregar modelos pendientes (separados por coma) y Enter"
+              onkeydown="if(event.key==='Enter'){Views.agregarHierroPendiente(this.value);this.value=''}">
+          </div></div>`;
+      })()}
 
       <div class="card">
         <div class="tbl-wrap"><table class="tbl"><thead><tr>
@@ -537,6 +556,21 @@ Object.assign(Views, {
       Views.invalidar(); Views.F.hierros = {...Views.F.hierros, form:null}; Router.refresh(); UI.toast('Hierro guardado','ok'); }
   },
 
+  async agregarHierroPendiente(txt){
+    const nuevos = (txt||'').split(',').map(s=>s.trim()).filter(Boolean);
+    if(!nuevos.length) return;
+    if(!Data.s.config.hierrosPendientes) Data.s.config.hierrosPendientes = [];
+    nuevos.forEach(m=>{ if(!Data.s.config.hierrosPendientes.includes(m)) Data.s.config.hierrosPendientes.push(m); });
+    await Data.saveHierros();
+    Router.refresh(); UI.toast('Pendiente agregado','ok');
+  },
+  async quitarHierroPendiente(idx){
+    const pend = Data.s.config.hierrosPendientes||[]; if(!pend[idx]) return;
+    pend.splice(idx,1);
+    await Data.saveHierros();
+    Router.refresh();
+  },
+
   borrarHierro(idx){
     const h = (Data.s.config.hierros||[])[idx]; if(!h) return;
     UI.confirm('Borrar hierro', `¿Borrar el hierro <b>${esc(h.largo)}×${esc(h.alto)}${h.prof?'×'+esc(h.prof):''}</b>?
@@ -546,6 +580,51 @@ Object.assign(Views, {
         await Data.saveHierros();
         Views.invalidar(); Router.refresh(); UI.toast('Hierro borrado','ok');
       }, 'Sí, borrar');
+  },
+
+  /** Pegar varios hierros de una: tabla (largo, alto, precio) + a qué
+   *  modelos/categorías aplican todos. El match final es por largo. */
+  pegarHierros(){
+    UI.modal('Pegar hierros',
+      `<div class="hint" style="margin-bottom:10px">Pegá una fila por hierro con <b>Largo · Alto · Precio</b>
+        (separados por tab, coma o punto y coma). El alto es informativo — el match con el producto es por largo.</div>
+       <textarea id="phTA" class="inp" rows="8" style="width:100%;font-family:monospace;font-size:12px"
+         placeholder="100	65	90000&#10;120	65	100000&#10;140	65	110000"></textarea>
+       <div style="margin-top:12px">
+         <label class="inp-lbl">Aplica a MODELOS (separados por coma)</label>
+         <input id="phMods" class="inp" style="width:100%" placeholder="Colombia, Honduras, Paraguay, Cuba"></div>
+       <div style="margin-top:10px">
+         <label class="inp-lbl">…o a CATEGORÍAS enteras (opcional)</label>
+         <select id="phCat" class="inp" style="width:100%">
+           <option value="">— ninguna —</option>
+           ${Data.s.categorias.map(c=>`<option value="${c.id}">${esc(c.nombre)}</option>`).join('')}
+         </select></div>`,
+      `<button class="btn" onclick="UI.closeAll()">Cancelar</button>
+       <button class="btn btn-blue" onclick="Views.procesarPegarHierros()">Cargar hierros</button>`);
+  },
+
+  async procesarPegarHierros(){
+    const txt = (document.getElementById('phTA')||{}).value || '';
+    const mods = (document.getElementById('phMods').value||'').split(',').map(s=>s.trim()).filter(Boolean);
+    const catSel = document.getElementById('phCat').value || '';
+    const cats = catSel ? [catSel] : [];
+    if(!mods.length && !cats.length){ UI.toast('Asigná al menos un modelo o categoría','err'); return; }
+    const lineas = txt.split('\n').map(l=>l.trim()).filter(Boolean);
+    const nuevos = [];
+    for(const ln of lineas){
+      const c = ln.split(/\t|;|,/).map(x=>x.trim());
+      if(c.length < 3) continue;
+      const largo = parseNum(c[0]), alto = parseNum(c[1]), precio = parseNum(c[2]);
+      if(!largo || !precio) continue;
+      nuevos.push({id:Date.now()+Math.floor(Math.random()*10000), largo, alto:alto||null, prof:null,
+        precio, categorias:cats.slice(), modelos:mods.slice()});
+    }
+    if(!nuevos.length){ UI.toast('No encontré hierros válidos','err'); return; }
+    if(!Data.s.config.hierros) Data.s.config.hierros = [];
+    Data.s.config.hierros.push(...nuevos);
+    const ok = await Data.saveHierros();
+    if(ok){ Data.log('Hierros', `${nuevos.length} cargados`, `${mods.join(', ')||Data.catNombre(catSel)}`);
+      Views.invalidar(); UI.closeAll(); Router.refresh(); UI.toast(`${nuevos.length} hierros cargados`,'ok'); }
   },
 
   /** Abre una ventana lista para imprimir o guardar como PDF, con las 4

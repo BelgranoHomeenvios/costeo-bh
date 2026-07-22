@@ -60,6 +60,8 @@ Object.assign(Views, {
       <div class="page-head">
         <div><h2>Lista de costos</h2>
           <div class="sub">La fuente de la que salen los costos. Editás acá y todos los muebles se recalculan.</div></div>
+        <div class="spacer"></div>
+        <button class="btn" onclick="Views.imprimirLista()">${Icon('imp')} Imprimir / PDF</button>
       </div>
 
       ${(()=>{ const nv = Views.noVinculados();
@@ -69,13 +71,60 @@ Object.assign(Views, {
           <button class="btn btn-sm" onclick="Views.irProductos({soloNoVinc:true})">Ver cuáles</button>
         </div>` : '';
       })()}
+      ${(()=>{
+        const aum = (Data.s.config.aumentos||[]);
+        if(!aum.length) return '';
+        // acumulado general y por terminación (compone los % en cadena)
+        const acum = {}; TIERS.forEach(t=>acum[t.key]=1);
+        let ultimo = {};
+        aum.forEach(a=>{
+          const keys = a.tier==='all' ? TIERS.map(t=>t.key) : [a.tier];
+          keys.forEach(k=>{ acum[k]*=(1+a.pct/100); ultimo[k]=a.pct; });
+        });
+        const prom = TIERS.reduce((s,t)=>s+acum[t.key],0)/TIERS.length;
+        const anio = new Date().getFullYear();
+        return `<div class="card mb"><div class="card-body" style="padding:12px 16px">
+          <div class="hint" style="margin-bottom:8px">Aumentos aplicados ${anio}</div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <div class="card" style="min-width:150px;padding:10px 14px">
+              <div class="hint">Acumulado general</div>
+              <div style="font-size:20px;font-weight:700;color:var(--red)">+${((prom-1)*100).toFixed(1).replace('.',',')}%</div>
+            </div>
+            <div class="card" style="flex:1;min-width:280px;padding:10px 14px">
+              <div class="hint" style="margin-bottom:6px">Por terminación · acumulado (último)</div>
+              <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:12px">
+                ${TIERS.map(t=>`<span>${esc(t.label)}
+                  <b class="t-red">+${((acum[t.key]-1)*100).toFixed(0)}%</b>
+                  ${ultimo[t.key]!=null?`<span class="t-mut">(últ +${ultimo[t.key]})</span>`:''}</span>`).join('')}
+              </div>
+            </div>
+          </div>
+        </div></div>`;
+      })()}
+
+      <div class="card mb" style="border-color:var(--blue)"><div class="card-body" style="padding:12px 16px">
+        <div class="sec-lbl" style="margin-bottom:10px">Aplicar aumento</div>
+        <div class="filters" style="align-items:flex-end">
+          <div><label class="inp-lbl">Categoría</label>
+            ${Views.selCat('aumCat', cat, '')}</div>
+          <div><label class="inp-lbl">Terminación</label>
+            <select class="inp" id="aumTier">
+              <option value="all">Todas las terminaciones</option>
+              ${TIERS.map(t=>`<option value="${t.key}">Solo ${esc(t.label)}</option>`).join('')}
+            </select></div>
+          <div><label class="inp-lbl">%</label>
+            <input class="inp" id="aumPct" type="number" step="0.1" placeholder="Ej: 8" style="width:80px"></div>
+          <button class="btn btn-blue" onclick="Views.verImpactoAumento()">Ver impacto y aplicar</button>
+        </div>
+        <div class="hint" style="margin-top:8px">Elegís categoría (o todas) y qué terminación aumentar (o todas). Te muestra el impacto antes de confirmar.</div>
+      </div></div>
+
       <div class="card mb"><div class="card-body" style="padding:12px 16px">
         <div class="filters">
-          <span class="hint" style="align-self:center">Categoría:</span>
+          <span class="hint" style="align-self:center">Ver categoría:</span>
           ${Views.selCat('listaCat', cat, 'onchange="Views.setListaCat(this.value)"')}
           <div class="spacer"></div>
           <button class="btn btn-sm" onclick="Views.pegarExcel()">${Icon('imp')} Pegar desde Excel</button>
-          <button class="btn btn-sm" onclick="Views.aumentarPct()">Aumentar %</button>
         </div>
       </div></div>
 
@@ -99,6 +148,67 @@ Object.assign(Views, {
   },
 
   setListaCat(cat){ Views.F.lista = {cat:cat||''}; Router.refresh(); },
+
+  /** Abre una ventana lista para imprimir o guardar como PDF, con las 4
+   *  terminaciones, encabezado y fecha. Respeta la categoría elegida. */
+  imprimirLista(){
+    const cat = Views.F.lista ? Views.F.lista.cat : '';
+    const cb = Data.s.costosBase.filter(x=>!cat || x.categoriaId===cat);
+    if(!cb.length){ UI.toast('No hay precios para imprimir','err'); return; }
+
+    // agrupar cat -> medida -> tier
+    const grupos = {};
+    cb.forEach(x=>{ const g = grupos[x.categoriaId] = grupos[x.categoriaId]||{};
+      (g[x.medida] = g[x.medida]||{})[x.tier] = x.costo; });
+    const cats = Object.keys(grupos).sort((a,b)=>Data.catNombre(a).localeCompare(Data.catNombre(b)));
+
+    const hoy = new Date().toLocaleDateString('es-AR',{day:'2-digit',month:'long',year:'numeric'});
+    const fmt = n => n ? '$ '+Math.round(n).toLocaleString('es-AR') : '—';
+
+    const bloques = cats.map(cid=>{
+      const meds = Object.keys(grupos[cid]).sort((a,b)=>medSort(a)-medSort(b));
+      return `<table class="pt">
+        <thead>
+          <tr class="cat"><th colspan="5">${esc(Data.catNombre(cid))}</th></tr>
+          <tr class="hd"><th>Medida</th>${TIERS.map(t=>`<th>${esc(t.label)}</th>`).join('')}</tr>
+        </thead>
+        <tbody>${meds.map(m=>`<tr>
+          <td class="med">${esc(m)}</td>
+          ${TIERS.map(t=>`<td class="pr">${fmt(grupos[cid][m][t.key])}</td>`).join('')}
+        </tr>`).join('')}</tbody>
+      </table>`;
+    }).join('');
+
+    const titulo = cat ? `BELGRANO HOME · ${Data.catNombre(cat)}` : 'BELGRANO HOME';
+    const html = `<!DOCTYPE html><html lang="es"><head><meta charset="utf-8">
+      <title>Lista de precios · Belgrano Home</title>
+      <style>
+        *{box-sizing:border-box}
+        body{font-family:Arial,Helvetica,sans-serif;color:#111;margin:24px;font-size:12px}
+        .head{display:flex;justify-content:space-between;align-items:flex-end;
+          border-bottom:2px solid #111;padding-bottom:8px;margin-bottom:16px}
+        .head h1{font-size:18px;margin:0;letter-spacing:.5px}
+        .head .fecha{font-size:12px;color:#444}
+        .pt{width:100%;border-collapse:collapse;margin-bottom:14px;
+          break-inside:avoid;page-break-inside:avoid}
+        .pt .cat th{text-align:left;background:#1F3864;color:#fff;font-size:13px;
+          padding:6px 8px;border:1px solid #1F3864}
+        .pt .hd th{background:#EEF1F6;font-size:11px;padding:5px 8px;border:1px solid #ccc;text-align:right}
+        .pt .hd th:first-child{text-align:left}
+        .pt td{padding:4px 8px;border:1px solid #ddd}
+        .pt td.med{font-weight:bold;text-align:left}
+        .pt td.pr{text-align:right;font-variant-numeric:tabular-nums}
+        @media print{ body{margin:12mm} .pt{break-inside:avoid} }
+      </style></head><body>
+      <div class="head"><h1>${esc(titulo)}</h1><div class="fecha">Lista de precios · ${esc(hoy)}</div></div>
+      ${bloques}
+      <script>window.onload=()=>{window.print()}<\/script>
+      </body></html>`;
+
+    const w = window.open('', '_blank');
+    if(!w){ UI.toast('Permití las ventanas emergentes para imprimir','err'); return; }
+    w.document.write(html); w.document.close();
+  },
 
   /** Guarda el costo de una celda al salir del input. */
   async guardarCostoBase(el){
@@ -160,34 +270,31 @@ Object.assign(Views, {
     UI.toast(`${filas.length} precios cargados en ${Data.catNombre(cat)}`,'ok');
   },
 
-  /** Modal para aumentar un % toda la categoría (o todas). */
-  aumentarPct(){
-    const cat = Views.F.lista ? Views.F.lista.cat : '';
-    const alcance = cat ? Data.catNombre(cat) : 'TODAS las categorías';
-    UI.modal('Aumentar precios por %',
-      `<div class="hint" style="margin-bottom:10px">Se aplica a <b>${esc(alcance)}</b>.
-        Todos los precios de la tabla se multiplican por el porcentaje.</div>
-       <label class="inp-lbl">Porcentaje de aumento</label>
-       <input id="pctInp" class="inp" type="number" step="0.1" placeholder="Ej: 8" style="width:120px"> %`,
-      `<button class="btn" onclick="UI.closeAll()">Cancelar</button>
-       <button class="btn btn-blue" onclick="Views.confirmarAumento('${cat}')">Ver impacto</button>`);
-  },
-
-  confirmarAumento(cat){
-    const pct = parseFloat((document.getElementById('pctInp')||{}).value);
+  /** Lee el panel inline y muestra el impacto antes de aplicar. */
+  verImpactoAumento(){
+    const cat = document.getElementById('aumCat').value || '';
+    const tier = document.getElementById('aumTier').value || 'all';
+    const pct = parseFloat(document.getElementById('aumPct').value);
     if(!pct || pct===0){ UI.toast('Poné un porcentaje','err'); return; }
     const factor = 1 + pct/100;
-    const afectadas = Data.s.costosBase.filter(x=>!cat||x.categoriaId===cat);
-    const alcance = cat ? Data.catNombre(cat) : 'todas las categorías';
+    const afectadas = Data.s.costosBase.filter(x=>
+      (!cat || x.categoriaId===cat) && (tier==='all' || x.tier===tier));
+    if(!afectadas.length){ UI.toast('No hay precios para ese alcance','err'); return; }
+    const alcCat = cat ? Data.catNombre(cat) : 'todas las categorías';
+    const alcTier = tier==='all' ? 'todas las terminaciones' : (TIERS.find(t=>t.key===tier)||{}).label;
     UI.confirm('Confirmar aumento',
-      `Vas a aumentar <b>${pct}%</b> los <b>${afectadas.length}</b> precios de <b>${esc(alcance)}</b>.<br><br>
-       Ejemplo: un costo de ${money(100000)} pasa a ${money(Math.round(100000*factor))}.<br><br>
-       Esto recalcula el costo de todos los productos afectados. ¿Confirmás?`,
+      `Vas a aumentar <b>${pct}%</b> · <b>${esc(alcCat)}</b> · <b>${esc(alcTier)}</b>.<br><br>
+       Afecta <b>${afectadas.length}</b> precios. Ejemplo: ${money(100000)} pasa a ${money(Math.round(100000*factor))}.<br><br>
+       Recalcula el costo de todos los productos afectados. ¿Confirmás?`,
       async ()=>{
         const filas = afectadas.map(x=>({categoriaId:x.categoriaId, medida:x.medida, tier:x.tier,
           costo:Math.round(x.costo*factor)}));
         await Data.importarCostos(filas);
-        Data.log('Aumento masivo', alcance, `+${pct}% sobre ${filas.length} precios`);
+        // registrar el aumento (versionado con fecha)
+        if(!Data.s.config.aumentos) Data.s.config.aumentos = [];
+        Data.s.config.aumentos.push({fecha:new Date().toISOString(), pct, categoriaId:cat||'', tier, n:filas.length});
+        await Data.saveAdicionales(); // persiste config
+        Data.log('Aumento', `${alcCat} · ${alcTier}`, `+${pct}% sobre ${filas.length} precios`);
         Views.invalidar(); Router.refresh();
         UI.toast(`Aumento de ${pct}% aplicado`,'ok');
       }, 'Sí, aumentar');

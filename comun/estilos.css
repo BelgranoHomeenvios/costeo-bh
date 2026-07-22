@@ -205,6 +205,63 @@ select.inp{cursor:pointer;padding-right:26px;
 .tbl thead th.sortable:hover{color:var(--ink);background:#F2F6FB}
 .tbl thead th .arr{opacity:.4;margin-left:3px}
 .tbl thead th.sorted .arr{opacity:1;color:var(--blue)}
+
+/* Header: filtro (texto) + orden (flecha) separados */
+.tbl thead th{position:relative;overflow:visible}
+.th-in{display:inline-flex;align-items:center;gap:6px}
+.th-lbl{cursor:pointer;user-select:none;border-radius:3px;padding:1px 3px}
+.th-lbl:hover{color:var(--ink);background:#E9F0FA}
+.th-lbl.static{cursor:default}
+.th-lbl.static:hover{color:inherit;background:none}
+.th-sort{cursor:pointer;opacity:.45;font-size:12px}
+.th-sort:hover{opacity:1;color:var(--blue)}
+.tbl thead th.sorted .th-sort{opacity:1;color:var(--blue)}
+.colmenu{
+  position:absolute;top:100%;left:6px;z-index:20;margin-top:3px;
+  background:#fff;border:1px solid var(--line);border-radius:var(--r-sm);
+  box-shadow:0 6px 22px rgba(15,27,42,.14);min-width:190px;max-width:280px;
+  padding:6px;text-transform:none;letter-spacing:normal;font-weight:400;
+}
+.colmenu-q{width:100%;margin-bottom:5px}
+.colmenu-list{max-height:260px;overflow-y:auto}
+.colmenu-item{
+  padding:6px 9px;font-size:12px;color:var(--ink);border-radius:5px;cursor:pointer;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.colmenu-item:hover{background:var(--blue-l)}
+.colmenu-item.sel{background:var(--blue-l);color:var(--blue-d);font-weight:600}
+.colmenu-item.clear{color:var(--red);border-top:1px solid var(--line2);margin-top:4px;border-radius:0}
+.colmenu-empty{padding:8px 9px;font-size:12px;color:var(--mut)}
+
+/* Chips de filtros activos */
+.chips{display:flex;flex-wrap:wrap;gap:7px;align-items:center;margin-bottom:12px}
+.chip{
+  display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;
+  background:var(--blue-l);color:var(--blue-d);border:1px solid #CFE0FB;
+  padding:4px 6px 4px 10px;border-radius:20px;
+}
+.chip-x{cursor:pointer;opacity:.6;font-weight:700;padding:0 2px}
+.chip-x:hover{opacity:1;color:var(--red)}
+
+/* Tarjetas grandes tipo dashboard */
+.acc-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:11px}
+.acc-card{
+  background:var(--card);border:1px solid var(--line);border-radius:var(--r);
+  padding:13px 15px;transition:all .12s;
+}
+.acc-card.click{cursor:pointer}
+.acc-card.click:hover{border-color:#C6D3E4;box-shadow:0 2px 8px rgba(15,27,42,.06)}
+.acc-n{font-size:23px;font-weight:750;line-height:1.1;color:var(--ink)}
+.acc-l{font-size:11.5px;color:var(--sec);font-weight:600;margin-top:3px}
+.acc-card.am .acc-n{color:var(--amber)}
+.acc-card.rojo .acc-n{color:var(--red)}
+.acc-card.ok .acc-n{color:var(--green)}
+.acc-card.activa{border-width:2px;padding:12px 14px}
+.acc-card.activa.am{border-color:var(--amber);background:var(--amber-l)}
+.acc-card.activa.rojo{border-color:var(--red);background:var(--red-l)}
+.acc-card.activa.gris{border-color:var(--gray);background:var(--gray-l)}
+.acc-card.activa.ok{border-color:var(--green);background:#F0FAF3}
+.acc-card.activa:not(.am):not(.rojo):not(.gris):not(.ok){border-color:var(--blue);background:var(--blue-l)}
 .tbl tbody td{padding:9px 12px;border-bottom:1px solid var(--line2);vertical-align:middle}
 .tbl tbody tr{transition:background .1s}
 .tbl tbody tr:hover{background:#FAFCFE}

@@ -6,7 +6,8 @@ const Views = (() => {
   /* filtros persistentes entre navegaciones */
   const F = {
     prod:{cat:'', modelo:'', estado:'', medida:'', term:'', vars:{}, q:'',
-          soloAumentar:false, incompletos:false, revisar:false, modeloAbierto:false,
+          soloAumentar:false, incompletos:false, revisar:false, sinCosto:false, hoy:false,
+          menuCol:'', menuQ:'',
           sort:'aumentoPct', dir:-1, page:0, per:50},
     rent:{cat:''},
     sim:{prodId:null, costo:null, precio:null, desc:null, target:null},
@@ -45,6 +46,70 @@ const Views = (() => {
       break;
     }
     return (i===catWords.length && j>0) ? modWords.slice(j).join(' ') : modelo;
+  }
+
+  /** Valor "filtrable" de una fila para una columna dada. */
+  function valorCol(p, k){
+    if(k==='categoriaId') return Data.catNombre(p.categoriaId);
+    if(k==='modelo') return p.modelo||'';
+    if(k==='medida') return p.medida||'';
+    if(k==='estructura') return (p.variantes||{}).Estructura||'';
+    if(k==='variante2') return (Object.entries(p.variantes||{}).find(([kk])=>kk!=='Estructura')||['',''])[1]||'';
+    if(k==='estado'){ return ''; }
+    return '';
+  }
+
+  /** Menú de filtro que se abre bajo un título. Lista los valores reales de esa
+   *  columna en el alcance actual, con buscador si son muchos. */
+  function menuFiltroCol(k, alcance){
+    const f = F.prod;
+    if(k==='estado'){
+      const opts = Object.entries(ESTADO);
+      return `<div class="colmenu">
+        ${opts.map(([id,v])=>`<div class="colmenu-item ${f.estado===id?'sel':''}"
+          onclick="Views.setProd('estado','${id}');Views.cerrarMenuCol()">${esc(v.lbl)}</div>`).join('')}
+        ${f.estado?`<div class="colmenu-item clear" onclick="Views.setProd('estado','');Views.cerrarMenuCol()">Quitar filtro</div>`:''}
+      </div>`;
+    }
+    let vals = [...new Set(alcance.map(({p})=>valorCol(p,k)).filter(Boolean))];
+    if(k==='medida') vals.sort((a,b)=>medSort(a)-medSort(b));
+    else vals.sort((a,b)=>a.localeCompare(b));
+    const q = (f.menuQ||'').toLowerCase();
+    const filtradas = q ? vals.filter(v=>v.toLowerCase().includes(q)) : vals;
+    const activo = k==='categoriaId' ? (f.cat?Data.catNombre(f.cat):'')
+      : k==='modelo' ? f.modelo
+      : k==='medida' ? f.medida
+      : k==='estructura' ? (f.vars||{}).Estructura
+      : k==='variante2' ? Object.entries(f.vars||{}).find(([kk])=>kk!=='Estructura')?.[1]
+      : '';
+    const setter = v => {
+      if(k==='categoriaId'){ const id=[...new Set(Data.s.productos.map(p=>p.categoriaId))].find(c=>Data.catNombre(c)===v); return `Views.setProd('cat','${id||''}')`; }
+      if(k==='modelo') return `Views.setProd('modelo','${escJs(v)}')`;
+      if(k==='medida') return `Views.setProd('medida','${escJs(v)}')`;
+      if(k==='estructura') return `Views.setVar('Estructura','${escJs(v)}')`;
+      if(k==='variante2'){ const clave=[...new Set(alcance.map(({p})=>Object.keys(p.variantes||{}).find(kk=>kk!=='Estructura')).filter(Boolean))][0]||''; return `Views.setVar('${escJs(clave)}','${escJs(v)}')`; }
+      return '';
+    };
+    return `<div class="colmenu">
+      ${vals.length>8?`<input class="inp colmenu-q" placeholder="Buscar…" value="${esc(f.menuQ)}"
+        oninput="Views.menuColBuscar(this.value)" onclick="event.stopPropagation()">`:''}
+      <div class="colmenu-list">
+        ${filtradas.length?filtradas.map(v=>`<div class="colmenu-item ${activo===v?'sel':''}"
+          onclick="${setter(v)};Views.cerrarMenuCol()">${esc(v)}</div>`).join('')
+          :`<div class="colmenu-empty">Sin coincidencias</div>`}
+      </div>
+      ${activo?`<div class="colmenu-item clear" onclick="${setter('')};Views.cerrarMenuCol()">Quitar filtro</div>`:''}
+    </div>`;
+  }
+
+  /** IDs de productos con alguna edición registrada hoy (según historial). */
+  function idsHoy(){
+    const hoy = new Date().toDateString();
+    const ids = new Set();
+    (Data.s.historial||[]).forEach(h=>{
+      if(h.productId && h.fecha && new Date(h.fecha).toDateString()===hoy) ids.add(h.productId);
+    });
+    return ids;
   }
 
   function nPendientes(){
@@ -257,7 +322,9 @@ const Views = (() => {
     let rows = alcanceProd();
     if(f.soloAumentar) rows = rows.filter(({c})=>c.aumentoPct>0.001);
     if(f.incompletos)  rows = rows.filter(({c})=>!c.tieneCosto || !c.lista);
+    if(f.sinCosto)     rows = rows.filter(({c})=>!c.tieneCosto);
     if(f.revisar)      rows = rows.filter(({c})=>c.tieneCosto && (c.markup>Data.s.config.umbralSospecha || c.ganancia<0));
+    if(f.hoy){ const ids=idsHoy(); rows = rows.filter(({p})=>ids.has(p.id)); }
     const k = f.sort;
     rows.sort((a,b)=>{
       if(k==='categoriaId') return f.dir * Data.catNombre(a.p.categoriaId).localeCompare(Data.catNombre(b.p.categoriaId));
@@ -291,7 +358,9 @@ const Views = (() => {
       ? alcCosteados.reduce((s,{c})=>s+c.margen,0)/alcCosteados.length : 0;
     const rowsAum  = alcance.filter(({c})=>c.aumentoPct>0.001).length;
     const rowsInc  = alcance.filter(({c})=>!c.tieneCosto || !c.lista).length;
+    const rowsSinC = alcance.filter(({c})=>!c.tieneCosto).length;
     const rowsRev  = alcance.filter(({c})=>c.tieneCosto && (c.markup>cfg.umbralSospecha || c.ganancia<0)).length;
+    const rowsBaja = alcance.filter(({c})=>c.estado==='rojo').length;
     const nombreAlcance = f.cat ? Data.catNombre(f.cat) : 'todas las categorías';
 
     /* --- Opciones en cascada: cada filtro se calcula sobre lo que dejan pasar
@@ -316,31 +385,34 @@ const Views = (() => {
             `<option value="${esc(v)}" ${(f.vars||{})[k]===v?'selected':''}>${esc(k)}: ${esc(v)}</option>`).join('')}
         </select>`).join('');
 
+    const cols = [['categoriaId','Categoría',0,1],['modelo','Modelo',0,1],['medida','Medida',0,1],
+       ['estructura','Variante 1',0,1],['variante2','Variante 2',0,1],
+       ['costoFinal','Costo',1,0],['efectivo','P. efectivo',1,0],
+       ['ganancia','Ganancia',1,0],['margen','Margen',1,0],['markup','Markup vs objetivo',1,0],
+       ['aumentoPct','Aum. sugerido',1,0],['estado','Estado',0,1]];
+
     const tbl = !pag.length ? UI.empty('Sin resultados','Probá cambiando los filtros.')
       : `<div class="tbl-wrap"><table class="tbl"><thead><tr>
-        ${[['categoriaId','Categoría',0],['modelo','Modelo',0],['medida','Medida',0],
-           ['estructura','Variante 1',0],['variante2','Variante 2',0],
-           ['costoFinal','Costo',1],['efectivo','P. efectivo',1],
-           ['ganancia','Ganancia',1],['margen','Margen',1],['markup','Markup vs objetivo',1],
-           ['aumentoPct','Aum. sugerido',1],['estado','Estado',0]]
-          .map(([k,l,n])=>`<th class="${n?'num ':''}sortable ${k===f.sort?'sorted':''}"
-            onclick="Views.sortProd('${k}')">${l}<span class="arr">${
-            k===f.sort?(f.dir>0?'↑':'↓'):'↕'}</span>${k==='modelo'?
-            `<span onclick="event.stopPropagation();Views.toggleModeloFiltro()"
-               title="Filtrar por modelo" style="margin-left:5px;opacity:.7">▾</span>`:''}</th>`).join('')}
+        ${cols.map(([k,l,n,filtrable])=>`<th class="${n?'num ':''}${k===f.sort?'sorted':''}">
+            <span class="th-in">
+              ${filtrable
+                ? `<span class="th-lbl" onclick="Views.abrirMenuCol('${k}')" title="Filtrar por ${esc(l)}">${l}</span>`
+                : `<span class="th-lbl static">${l}</span>`}
+              <span class="th-sort" onclick="Views.sortProd('${k}')" title="Ordenar">${
+                k===f.sort?(f.dir>0?'↑':'↓'):'↕'}</span>
+            </span>
+            ${f.menuCol===k?menuFiltroCol(k, alcance):''}
+          </th>`).join('')}
       </tr></thead><tbody>${pag.map(({p,c})=>{
         const est = (p.variantes||{}).Estructura || '';
         const [clave2,val2] = Object.entries(p.variantes||{}).find(([k])=>k!=='Estructura') || ['',''];
         return `
         <tr class="clickable" onclick="Views.ficha('${p.id}')">
           <td class="t-sec">${esc(Data.catNombre(p.categoriaId))}</td>
-          <td class="strong"><a href="#" onclick="event.stopPropagation();Views.setProd('modelo','${esc(p.modelo)}');return false"
-            title="Filtrar por este modelo">${esc(sinPrefijoCategoria(p.modelo, Data.catNombre(p.categoriaId)))}</a></td>
+          <td class="strong">${esc(sinPrefijoCategoria(p.modelo, Data.catNombre(p.categoriaId)))}</td>
           <td class="t-sec">${esc(p.medida||'—')}</td>
-          <td class="t-sec" style="font-size:11.5px">${est?`<a href="#" onclick="event.stopPropagation();Views.setVar('Estructura','${esc(est)}');return false"
-            title="Filtrar por Estructura: ${esc(est)}">Estructura: ${esc(est)}</a>`:'—'}</td>
-          <td class="t-sec" style="font-size:11.5px">${val2?`<a href="#" onclick="event.stopPropagation();Views.setVar('${esc(clave2)}','${esc(val2)}');return false"
-            title="Filtrar por ${esc(clave2)}: ${esc(val2)}">${esc(clave2)}: ${esc(val2)}</a>`:'—'}</td>
+          <td class="t-sec" style="font-size:11.5px">${est?`Estructura: ${esc(est)}`:'—'}</td>
+          <td class="t-sec" style="font-size:11.5px">${val2?`${esc(clave2)}: ${esc(val2)}`:'—'}</td>
           <td class="num">${UI.cellEdit(p.id,'costo',c.costoFinal, c.baseDeTabla?'de tabla':'sin costo')}</td>
           <td class="num">${UI.cellEdit(p.id,'efectivo',c.efectivo,'sin precio')}</td>
           <td class="num ${c.ganancia<0?'t-red':''}">${c.tieneCosto?money(c.ganancia):'<span class="t-mut">—</span>'}</td>
@@ -367,15 +439,11 @@ const Views = (() => {
         <button class="btn" onclick="Views.exportarCSV()">${Icon('dl')} Exportar CSV</button>
       </div>
       <div class="card mb"><div class="card-body" style="padding:14px 16px">
-        <div class="filters" style="margin-bottom:14px">
+        <div class="filters" style="margin-bottom:12px">
           ${selCat('fpCat', f.cat, 'onchange="Views.setProd(\'cat\',this.value)"')}
-          <select class="inp" onchange="Views.setProd('estado',this.value)">
-            <option value="">Todos los estados</option>
-            ${Object.entries(ESTADO).map(([k,v])=>`<option value="${k}" ${f.estado===k?'selected':''}>${v.lbl}</option>`).join('')}
-          </select>
-          <select class="inp" onchange="Views.setProd('medida',this.value)">
-            <option value="">Todas las medidas</option>
-            ${medidas.map(m=>`<option value="${esc(m)}" ${f.medida===m?'selected':''}>${esc(m)}</option>`).join('')}
+          <select class="inp" style="max-width:240px" onchange="Views.setProd('modelo',this.value)">
+            <option value="">Todos los modelos</option>
+            ${modelos.map(m=>`<option value="${esc(m)}" ${f.modelo===m?'selected':''}>${esc(m)}</option>`).join('')}
           </select>
           <select class="inp" onchange="Views.setProd('term',this.value)">
             <option value="">Todas las terminaciones</option>
@@ -386,16 +454,42 @@ const Views = (() => {
           <select class="inp" onchange="Views.setProd('per',+this.value)" title="Filas por página">
             ${[50,100,200,500,1000].map(n=>`<option value="${n}" ${f.per===n?'selected':''}>${n} por página</option>`).join('')}
           </select>
-          ${(f.cat||f.modelo||f.estado||f.medida||f.term||f.q||f.soloAumentar||f.incompletos
-             ||f.revisar||Object.keys(f.vars||{}).length)
-            ?`<button class="btn btn-sm btn-ghost" onclick="Views.limpiarProd()">Limpiar filtros</button>`:''}
         </div>
-        ${f.cat && varSel ? `<div class="filters" style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--line2)">
-          <span class="hint" style="align-self:center">Atributos de ${esc((Data.cat(f.cat)||{}).nombre||'')}:</span>
-          ${varSel}
-        </div>` : ''}
-        <div class="hint" style="margin-bottom:6px">Estado general — ${esc(nombreAlcance)}</div>
-        <div class="filters" style="margin-bottom:14px">
+        ${(()=>{ const chips=[];
+          if(f.cat) chips.push(['Categoría: '+Data.catNombre(f.cat), "Views.setProd('cat','')"]);
+          if(f.modelo) chips.push(['Modelo: '+sinPrefijoCategoria(f.modelo, f.cat?Data.catNombre(f.cat):''), "Views.setProd('modelo','')"]);
+          if(f.medida) chips.push(['Medida: '+f.medida, "Views.setProd('medida','')"]);
+          if(f.term) chips.push(['Terminación: '+((TIERS.find(x=>x.id===f.term)||{}).label||f.term), "Views.setProd('term','')"]);
+          if(f.estado) chips.push(['Estado: '+((ESTADO[f.estado]||{}).lbl||f.estado), "Views.setProd('estado','')"]);
+          Object.entries(f.vars||{}).forEach(([k,v])=>{ if(v) chips.push([k+': '+v, `Views.setVar('${escJs(k)}','')`]); });
+          if(f.soloAumentar) chips.push(['Para aumentar', "Views.toggleProd('soloAumentar')"]);
+          if(f.incompletos) chips.push(['Incompletos', "Views.toggleProd('incompletos')"]);
+          if(f.sinCosto) chips.push(['Sin costo', "Views.toggleProd('sinCosto')"]);
+          if(f.revisar) chips.push(['Por revisar', "Views.toggleProd('revisar')"]);
+          if(f.hoy) chips.push(['Actualizados hoy', "Views.toggleProd('hoy')"]);
+          return chips.length ? `<div class="chips">${chips.map(([l,acc])=>
+            `<span class="chip">${esc(l)}<span class="chip-x" onclick="${acc}" title="Quitar">✕</span></span>`).join('')}
+            <button class="btn btn-sm btn-ghost" onclick="Views.limpiarProd()">Limpiar todo</button></div>` : '';
+        })()}
+        <div class="acc-cards">
+          ${[['','Productos totales', alcance.length, ''],
+             ['soloAumentar','Para aumentar', rowsAum, 'am'],
+             ['estadoRojo','Rentabilidad baja', rowsBaja, 'rojo'],
+             ['sinCosto','Sin costo / incompletos', rowsSinC, 'gris'],
+             ['revisar','Costos por revisar', rowsRev, 'am'],
+             ['hoy','Actualizados hoy', idsHoy().size, 'ok']]
+            .map(([k,l,n,tono])=>{
+              const activo = k==='estadoRojo' ? f.estado==='rojo' : (k?f[k]:false);
+              const acc = k==='estadoRojo' ? "Views.filtrarEstadoRojo()" : (k?`Views.toggleProd('${k}')`:'');
+              return `<div class="acc-card ${tono} ${activo?'activa':''} ${k?'click':''}"
+                ${k?`onclick="${acc}"`:''}>
+                <div class="acc-n">${n.toLocaleString('es-AR')}</div>
+                <div class="acc-l">${esc(l)}</div>
+              </div>`;
+            }).join('')}
+        </div>
+        <div class="hint" style="margin:12px 0 6px">Estado general — ${esc(nombreAlcance)}</div>
+        <div class="filters">
           <div class="card" style="flex:1;min-width:150px;padding:11px 14px">
             <div class="hint">Productos cargados</div>
             <div style="font-size:19px;font-weight:700">${alcance.length.toLocaleString('es-AR')}</div>
@@ -409,22 +503,6 @@ const Views = (() => {
             <div style="font-size:19px;font-weight:700">${pct1(margenProm)}</div>
           </div>
         </div>
-        <div class="hint" style="margin-bottom:6px">Necesita tu atención en ${esc(nombreAlcance)} — clic para filtrar</div>
-        <div class="filters">
-          ${[['soloAumentar','Requieren aumentar', rowsAum],
-             ['incompletos','Incompletos', rowsInc],
-             ['revisar','Por revisar', rowsRev]]
-            .map(([k,l,n])=>`<button class="btn btn-sm ${f[k]?'btn-blue':''}"
-              onclick="Views.toggleProd('${k}')">${esc(l)}
-              <span style="opacity:.75">${n.toLocaleString('es-AR')}</span></button>`).join('')}
-        </div>
-        ${f.modeloAbierto ? `<div class="filters" style="margin-top:9px">
-          <span class="hint" style="align-self:center">Filtrar por modelo:</span>
-          <select class="inp" style="max-width:280px" autofocus onchange="Views.setProd('modelo',this.value)">
-            <option value="">Todos los modelos</option>
-            ${modelos.map(m=>`<option value="${esc(m)}" ${f.modelo===m?'selected':''}>${esc(m)}</option>`).join('')}
-          </select>
-        </div>` : ''}
       </div></div>
       <div class="card">${tbl}
         ${nPag>1?`<div class="pag">
@@ -814,7 +892,7 @@ const Views = (() => {
       if(k==='modelo'){ F.prod.medida=''; F.prod.vars={}; }
       const foco = k==='q';
       Router.refresh();
-      if(foco){ const i=document.querySelector('input[placeholder^="Buscar modelo"]');
+      if(foco){ const i=document.querySelector('input[placeholder^="Buscar producto"]');
         if(i){ i.focus(); i.setSelectionRange(i.value.length,i.value.length);} } },
     setVar(campo,val){
       F.prod.vars = {...F.prod.vars};
@@ -822,9 +900,13 @@ const Views = (() => {
       F.prod.page=0; Router.refresh(); },
     sortProd(k){ if(F.prod.sort===k) F.prod.dir*=-1; else {F.prod.sort=k; F.prod.dir=-1;} Router.refresh(); },
     toggleProd(k){ F.prod[k] = !F.prod[k]; F.prod.page=0; Router.refresh(); },
-    toggleModeloFiltro(){ F.prod.modeloAbierto = !F.prod.modeloAbierto; Router.refresh(); },
+    filtrarEstadoRojo(){ F.prod.estado = F.prod.estado==='rojo'?'':'rojo'; F.prod.page=0; Router.refresh(); },
+    abrirMenuCol(k){ F.prod.menuCol = F.prod.menuCol===k?'':k; F.prod.menuQ=''; Router.refresh(); },
+    cerrarMenuCol(){ F.prod.menuCol=''; F.prod.menuQ=''; F.prod.page=0; Router.refresh(); },
+    menuColBuscar(v){ F.prod.menuQ=v; Router.refresh();
+      const el=document.querySelector('.colmenu-q'); if(el){ el.focus(); el.setSelectionRange(el.value.length,el.value.length); } },
     limpiarProd(){ Object.assign(F.prod,{cat:'',modelo:'',estado:'',medida:'',term:'',vars:{},q:'',
-      soloAumentar:false,incompletos:false,revisar:false,modeloAbierto:false,page:0}); Router.refresh(); },
+      soloAumentar:false,incompletos:false,revisar:false,sinCosto:false,hoy:false,menuCol:'',menuQ:'',page:0}); Router.refresh(); },
     pag(d){ F.prod.page+=d; Router.refresh(); window.scrollTo(0,0); },
     irPag(n){ F.prod.page=Math.max(0,n); Router.refresh(); window.scrollTo(0,0); },
     setSim(k,v){ F.sim[k]=parseFloat(v); Router.refresh(); },

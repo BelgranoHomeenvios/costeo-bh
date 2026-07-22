@@ -5,7 +5,7 @@ function uid(){
   return (crypto.randomUUID ? crypto.randomUUID()
     : 'id-'+Math.random().toString(36).slice(2)+Date.now().toString(36));
 }
-const money = n => (!n && n!==0) ? '—' : '$ ' + Math.round(n).toLocaleString('es-AR');
+const money = n => (!n && n!==0) ? '—' : '$' + Math.round(n).toLocaleString('es-AR');
 /** Parsea números escritos como los escribe un argentino: "272.440" o "1.234,50".
  *  Sin esto, parseFloat("272.440") devolvería 272,44 y arruinaría el costo. */
 function parseNum(txt){

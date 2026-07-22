@@ -250,6 +250,7 @@ const Router = (() => {
        {id:'costos',       label:'Actualización de costos', icon:'refresh'},
        {id:'listaCostos',  label:'Lista de costos',         icon:'tag'},
        {id:'categorias',   label:'Categorías y reglas',     icon:'tag'},
+       {id:'modelos',      label:'Modelos',                 icon:'box', oculto:true},
        {id:'pendientes',   label:'Pendientes',              icon:'clock', badge:()=>(typeof Views!=='undefined'?Views.nPendientes():0)},
        {id:'historial',    label:'Historial',               icon:'hist'},
        {id:'config',       label:'Configuración',           icon:'gear'},
@@ -294,7 +295,7 @@ const Router = (() => {
     if(cab) cab.innerHTML = `<div class="nom">${mod.nombre}</div><div class="desc">${mod.desc}</div>`;
 
     /* --- Solo las pantallas del módulo activo --- */
-    document.getElementById('nav').innerHTML = mod.paginas.map(p => {
+    document.getElementById('nav').innerHTML = mod.paginas.filter(p=>!p.oculto).map(p => {
       const n = p.badge ? p.badge() : 0;
       return `<button class="nav-item ${p.id===actual?'active':''}" onclick="Router.go('${p.id}')">
         ${Icon(p.icon)}<span>${p.label}</span>

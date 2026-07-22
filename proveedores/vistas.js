@@ -248,7 +248,7 @@ const Views = (() => {
         </div>
         <button class="btn" onclick="Views.invalidar();Router.refresh();UI.toast('Datos recalculados','ok')">
           ${Icon('refresh')}</button>
-        <button class="btn btn-primary" onclick="Router.go('importar')">${Icon('imp')} Actualizar datos</button>
+        <button class="btn btn-primary" onclick="Views.actualizarPreciosTN()">${Icon('imp')} Actualizar datos</button>
       </div>
       <div class="kpi-grid">${kpis}</div>
       <div class="card mb"><div class="card-head"><h3>Alertas principales</h3></div>
@@ -1010,10 +1010,28 @@ const Views = (() => {
         </div></div>`;
   }
 
+  /** Botón "Actualizar datos" del resumen: trae precios frescos de Tienda
+   *  Nube (Edge Function sync-precios), los superpone sobre el catálogo y
+   *  recalcula la rentabilidad con los precios nuevos. */
+  async function actualizarPreciosTN(){
+    try{
+      UI.progreso('Sincronizando precios con Tienda Nube…');
+      const r = await Data.sincronizarPreciosTN(msg => UI.progreso(msg));
+      const prog = document.getElementById('toastProg'); if(prog) prog.remove();
+      invalidar(); Router.refresh();
+      UI.toast(`Precios actualizados · ${r.cambiados.toLocaleString('es-AR')} con cambio `+
+        `de ${r.aplicados.toLocaleString('es-AR')} vinculados`, 'ok');
+      Data.log('Sincronización','Precios Tienda Nube',
+        `${r.cambiados} precios cambiados · ${r.aplicados} aplicados de ${r.enTN} en TN`);
+    }catch(err){
+      Views.errorCarga('los precios de Tienda Nube', err);
+    }
+  }
+
   return {
     F, calcAll, invalidar, nPendientes, noVinculados, selCat, sinDatos, sinPrefijoCat:sinPrefijoCategoria,
     resumen, productos, ficha, guardarFicha, guardarObs, simFicha, irProductos, simulador,
-    teclaCelda, guardarCelda,
+    teclaCelda, guardarCelda, actualizarPreciosTN,
     setProd(k,v){
       F.prod[k]=v; F.prod.page=0;
       // Al cambiar un nivel superior, los de abajo dejan de tener sentido

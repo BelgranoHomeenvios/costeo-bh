@@ -33,7 +33,9 @@ const Data = (() => {
     medida:r.medida, medidaCosteo:r.medida_costeo, tier:r.tier, atributo:r.atributo,
     costoManual:Number(r.costo_manual)||0, adicional:Number(r.adicional)||0,
     ajusteManual:Number(r.ajuste_manual)||0, precioLista:Number(r.precio_lista)||0,
-    obs:r.obs||''
+    obs:r.obs||'',
+    // Vínculo con Tienda Nube (se cargan una vez; la app no los reescribe).
+    tnVariantId:r.tn_variant_id ?? null, tnProductId:r.tn_product_id ?? null
   });
   const aDB = p => ({
     id:p.id, categoria_id:p.categoriaId, modelo:p.modelo, variantes:p.variantes||{},
@@ -203,6 +205,42 @@ const Data = (() => {
       s.sinCosto = arr.map(p=>({...p, id:p.id||uid()}));
       await Data.log('Importación','Productos sin costo', `${arr.length} productos`);
       return {n:arr.length};
+    },
+
+    /* ---------- SINCRONIZACIÓN CON TIENDA NUBE (TN → app) ----------
+       1) Dispara la Edge Function `sync-precios`, que baja el catálogo de
+          Tienda Nube por su API y hace upsert en rentabilidad.tn_precios.
+       2) Trae tn_precios y SUPERPONE su precio sobre precioLista de cada
+          producto matcheando por tnVariantId. La superposición es en
+          memoria: no reescribe productos.precio_lista en la base, así
+          cada sincronización vuelve a partir del precio fresco de TN.        */
+    async sincronizarPreciosTN(avisar){
+      if(!Supa.cliente) throw new Error('No hay conexión con Supabase.');
+
+      avisar && avisar('Pidiéndole los precios a Tienda Nube…');
+      const {data:res, error:eFn} = await Supa.cliente.functions.invoke('sync-precios');
+      if(eFn) throw new Error('La función sync-precios falló: ' + (eFn.message || eFn));
+      if(res && res.ok === false)
+        throw new Error('sync-precios respondió con error: ' + (res.error || JSON.stringify(res)));
+
+      avisar && avisar('Trayendo precios actualizados de la base…');
+      const precios = await Supa.traerTodo('tn_precios');
+      const porVariante = new Map(
+        precios.map(r => [String(r.variant_id), Number(r.precio)]));
+
+      let vinculados=0, aplicados=0, cambiados=0;
+      for(const p of s.productos){
+        if(p.tnVariantId == null) continue;
+        vinculados++;
+        const nuevo = porVariante.get(String(p.tnVariantId));
+        if(nuevo == null || !isFinite(nuevo)) continue;
+        aplicados++;
+        if((Number(p.precioLista)||0) !== nuevo){ p.precioLista = nuevo; cambiados++; }
+      }
+      return {
+        actualizadas: (res && res.actualizadas != null) ? res.actualizadas : precios.length,
+        enTN: precios.length, vinculados, aplicados, cambiados
+      };
     }
   };
 })();

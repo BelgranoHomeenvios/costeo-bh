@@ -603,7 +603,10 @@ const Views = (() => {
           </div></div>
       </div>
 
-      <div class="card mb"><div class="card-head"><h3>Rentabilidad y precio recomendado</h3>
+      <details class="vermas">
+        <summary>Ver más: rentabilidad, ajuste rápido, otras variantes, simulador, observaciones e historial</summary>
+
+      <div class="card mb" style="margin-top:14px"><div class="card-head"><h3>Rentabilidad y precio recomendado</h3>
         <div class="spacer"></div>${UI.badge(c.estado)}</div>
         <div class="card-body">
           ${c.tieneCosto?`<div style="margin-bottom:18px">
@@ -626,10 +629,14 @@ const Views = (() => {
         </div>
       </div>
 
-      <div class="card mb"><div class="card-head"><h3>Ajuste rápido</h3></div>
+      <div class="card mb"><div class="card-head"><h3>Ajuste rápido</h3>
+        <div class="spacer"></div><span class="hint">pisa el valor de la lista</span></div>
         <div class="card-body">
+          ${Number(p.costoManual)>0?`<div class="warn-box" style="margin-bottom:12px">
+            <b>El costo de este producto está cargado a mano.</b> No se actualiza cuando cambian los precios de la lista.
+            Para volver a vincularlo, borrá el costo manual (dejalo vacío) y guardá.</div>`:''}
           <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:11px;align-items:end">
-            <div><label class="inp-lbl">Costo manual (pisa la tabla)</label>
+            <div><label class="inp-lbl">Costo manual ${Number(p.costoManual)>0?'<span class="t-red">(manual)</span>':'(pisa la tabla)'}</label>
               <input class="inp" type="number" id="fCosto" style="width:100%" value="${p.costoManual||''}" placeholder="${Math.round(c.base)||'0'}"></div>
             <div><label class="inp-lbl">Precio de lista</label>
               <input class="inp" type="number" id="fPrecio" style="width:100%" value="${p.precioLista||''}"></div>
@@ -653,10 +660,7 @@ const Views = (() => {
             <td>${UI.badge(cc.estado)}</td>
           </tr>`).join('')}</tbody></table></div></div>`:''}
 
-      <details class="vermas">
-        <summary>Ver más: simulador, observaciones e historial</summary>
-
-        <div class="card mb" style="margin-top:14px"><div class="card-head"><h3>Simular este producto</h3>
+        <div class="card mb"><div class="card-head"><h3>Simular este producto</h3>
           <div class="spacer"></div><span class="hint">no modifica los datos reales</span></div>
           <div class="card-body">
             <div class="g2" style="gap:16px">

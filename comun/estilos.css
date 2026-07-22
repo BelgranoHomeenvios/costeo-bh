@@ -611,3 +611,12 @@ input[type=range]{width:100%;accent-color:var(--blue)}
 .modelo-row:hover{background:var(--bg)}
 .chev{color:var(--mut);font-size:12px;width:12px;display:inline-block}
 .cell-adic{background:var(--amber-l)}
+
+/* Selector de lista Carpintería / Hierros */
+.segmented{display:inline-flex;border:1px solid var(--line);border-radius:9px;overflow:hidden;background:var(--card)}
+.seg{padding:8px 18px;border:none;background:none;font-size:13px;font-weight:600;color:var(--sec);cursor:pointer;transition:all .12s}
+.seg:hover{background:var(--bg)}
+.seg.on{background:var(--blue);color:#fff}
+
+/* Chip de modelo en hierros (se distingue de las categorías) */
+.chip-mod{background:#EEF3FF;color:#3B5BDB;border-color:#D8E2FF}

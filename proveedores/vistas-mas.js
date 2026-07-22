@@ -4,6 +4,166 @@
 Object.assign(Views, {
 
   /* ============================================================
+     MODELOS — nivel intermedio: vincula lista de costos + adicionales
+     ============================================================ */
+  verModelos(catId){ Views.F.modelos = {cat:catId, expandido:{}}; Router.go('modelos'); },
+
+  modelos(){
+    const st = Views.F.modelos || {cat:'', expandido:{}};
+    const catId = st.cat;
+    if(!catId) return `<div class="card"><div class="card-body">Elegí una categoría desde <b>Categorías y reglas</b>.</div></div>`;
+    const cat = Data.cat(catId) || {};
+    const prods = Data.s.productos.filter(p=>p.categoriaId===catId);
+
+    const porModelo = {};
+    prods.forEach(p=>{ (porModelo[p.modelo] = porModelo[p.modelo]||[]).push(p); });
+    const modelos = Object.keys(porModelo).sort((a,b)=>a.localeCompare(b));
+
+    const reglas = Data.s.config.modeloReglas || {};
+    const defs = Data.s.config.adicionales || [];
+    const reglaDe = m => reglas[catId+'::'+m.toLowerCase()] || {fuente:'lista', adicionales:[]};
+
+    let nLista=0, nAdic=0, nPropio=0;
+    modelos.forEach(m=>{ const r=reglaDe(m);
+      if(r.fuente==='propio') nPropio++;
+      else if((r.adicionales||[]).length) nAdic++;
+      else nLista++; });
+
+    const filas = modelos.map(m=>{
+      const r = reglaDe(m);
+      const abierto = st.expandido && st.expandido[m];
+      const links = r.adicionales||[];
+      const etiqueta = r.fuente==='propio' ? `<span class="t-sec">● Precio propio</span>`
+        : links.length ? `<span class="t-amber">● Lista + ${links.map(l=>esc((defs.find(d=>d.id===l.id)||{}).nombre||'?')).join(', ')}</span>`
+        : `<span class="t-green">● Lista de costos</span>`;
+
+      let detalle = '';
+      if(abierto){
+        const vs = porModelo[m];
+        const medidas = [...new Set(vs.map(p=>p.medidaCosteo))].sort((a,b)=>medSort(a)-medSort(b));
+        const tierDe = {};
+        links.forEach(l=>{ const a=defs.find(d=>d.id===l.id); if(!a) return;
+          const ts = (l.tiers&&l.tiers.length)?l.tiers:(a.tiersDefault&&a.tiersDefault.length?a.tiersDefault:TIERS.map(t=>t.key));
+          ts.forEach(t=>tierDe[t]=true); });
+
+        const selFuente = `<select class="inp inp-sm" onchange="Views.setModeloFuente('${escJs(m)}',this.value)">
+          <option value="lista" ${r.fuente!=='propio'?'selected':''}>Lista de costos</option>
+          <option value="propio" ${r.fuente==='propio'?'selected':''}>Precio propio</option></select>`;
+
+        const selAdic = r.fuente==='propio' ? '' : `
+          <span class="t-sec" style="margin-left:6px">+ adicional:</span>
+          <select class="inp inp-sm" onchange="Views.addModeloAdic('${escJs(m)}',this.value)">
+            <option value="">— agregar —</option>
+            ${defs.filter(a=>!links.some(l=>l.id===a.id)).map(a=>`<option value="${a.id}">${esc(a.nombre)}</option>`).join('')}
+          </select>`;
+
+        const linksHTML = links.map(l=>{
+          const a = defs.find(d=>d.id===l.id); if(!a) return '';
+          const ts = (l.tiers&&l.tiers.length)?l.tiers:(a.tiersDefault&&a.tiersDefault.length?a.tiersDefault:TIERS.map(t=>t.key));
+          return `<div style="margin:8px 0;padding:8px 10px;border:1px solid var(--line);border-radius:8px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+              <b style="font-size:12px">${esc(a.nombre)} ${a.tipo==='pct'?'+'+a.valor+'%':'+'+money(a.valor)}</b>
+              <button class="icon-btn" onclick="Views.delModeloAdic('${escJs(m)}','${a.id}')" title="Quitar">${Icon('close')}</button>
+            </div>
+            <div style="font-size:11.5px;color:var(--sec);margin-bottom:5px">¿A qué terminaciones se le suma?</div>
+            <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12px">
+              ${TIERS.map(t=>`<label style="display:flex;align-items:center;gap:5px;cursor:pointer">
+                <input type="checkbox" ${ts.includes(t.key)?'checked':''}
+                  onchange="Views.toggleModeloTier('${escJs(m)}','${a.id}','${t.key}')"> ${esc(t.label)}</label>`).join('')}
+            </div>
+          </div>`;
+        }).join('');
+
+        const tablaVar = r.fuente==='propio' ? `<div class="hint" style="padding:8px 0">Este modelo tiene precio propio: el costo se carga a mano en cada producto.</div>`
+          : `<table class="tbl" style="font-size:11.5px"><thead><tr><th>Medida</th>
+            ${TIERS.map(t=>`<th class="num ${tierDe[t.key]?'t-amber':''}">${esc(t.label)}${tierDe[t.key]?' +':''}</th>`).join('')}
+          </tr></thead><tbody>${medidas.map(med=>{
+            return `<tr><td class="strong">${esc(med)}</td>${TIERS.map(t=>{
+              const pv = porModelo[m].find(p=>p.medidaCosteo===med && p.tier===t.key);
+              const cost = pv ? Calc.producto(pv).costoFinal : Calc.costoTabla(catId, med, t.key);
+              return `<td class="num ${tierDe[t.key]?'cell-adic':''}">${cost?money(cost):'—'}</td>`;
+            }).join('')}</tr>`;
+          }).join('')}</tbody></table>`;
+
+        detalle = `<div style="padding:4px 15px 14px 39px;background:var(--bg)">
+          <div class="filters" style="margin-bottom:10px;align-items:center">
+            <span class="t-sec" style="font-size:12px">Precio:</span> ${selFuente} ${selAdic}
+          </div>
+          ${linksHTML}
+          <div class="tbl-wrap" style="margin-top:8px">${tablaVar}</div>
+        </div>`;
+      }
+
+      return `<div style="border-top:1px solid var(--line)">
+        <div class="modelo-row" onclick="Views.toggleModeloExp('${escJs(m)}')">
+          <div style="display:flex;align-items:center;gap:10px">
+            <span class="chev">${abierto?'▾':'▸'}</span>
+            <b style="font-size:13px">${esc(Views.sinPrefijoCat?Views.sinPrefijoCat(m, cat.nombre||catId):m)}</b>
+            <span class="hint">${porModelo[m].length} variantes</span>
+          </div>
+          <div style="font-size:12px">${etiqueta}</div>
+        </div>
+        ${detalle}
+      </div>`;
+    }).join('');
+
+    return `
+      <div class="page-head">
+        <div>
+          <div class="hint" style="margin-bottom:2px">
+            <a href="#" onclick="Router.go('categorias');return false" style="color:var(--sec)">Categorías y reglas</a> › ${esc(cat.nombre||catId)}</div>
+          <h2>Modelos de ${esc(cat.nombre||catId)}</h2>
+          <div class="sub">Cómo toma el precio cada modelo. Por defecto derivan de la lista; marcás las excepciones.</div>
+        </div>
+      </div>
+
+      <div class="filters mb">
+        <div class="card" style="padding:10px 14px"><div class="hint">Modelos</div><div style="font-size:18px;font-weight:700">${modelos.length}</div></div>
+        <div class="card" style="padding:10px 14px"><div class="hint">Derivan de la lista</div><div style="font-size:18px;font-weight:700;color:var(--green)">${nLista}</div></div>
+        <div class="card" style="padding:10px 14px"><div class="hint">Con adicional</div><div style="font-size:18px;font-weight:700;color:var(--amber)">${nAdic}</div></div>
+        <div class="card" style="padding:10px 14px"><div class="hint">Precio propio</div><div style="font-size:18px;font-weight:700">${nPropio}</div></div>
+      </div>
+
+      <div class="card">${filas || '<div class="card-body"><div class="hint">Esta categoría no tiene productos cargados.</div></div>'}</div>`;
+  },
+
+  toggleModeloExp(m){ const st=Views.F.modelos; st.expandido=st.expandido||{}; st.expandido[m]=!st.expandido[m]; Router.refresh(); },
+
+  async setModeloFuente(m, fuente){
+    const st=Views.F.modelos; const r = (Data.s.config.modeloReglas||{})[st.cat+'::'+m.toLowerCase()] || {fuente:'lista',adicionales:[]};
+    r.fuente = fuente;
+    await Data.saveModeloRegla(st.cat, m, r);
+    Views.invalidar(); Router.refresh();
+  },
+  async addModeloAdic(m, adicId){
+    if(!adicId) return;
+    const st=Views.F.modelos; const key=st.cat+'::'+m.toLowerCase();
+    const r = (Data.s.config.modeloReglas||{})[key] || {fuente:'lista',adicionales:[]};
+    if(!r.adicionales.some(l=>l.id===adicId)) r.adicionales.push({id:adicId});
+    await Data.saveModeloRegla(st.cat, m, r);
+    Views.invalidar(); Router.refresh();
+  },
+  async delModeloAdic(m, adicId){
+    const st=Views.F.modelos; const key=st.cat+'::'+m.toLowerCase();
+    const r = (Data.s.config.modeloReglas||{})[key]; if(!r) return;
+    r.adicionales = r.adicionales.filter(l=>l.id!==adicId);
+    await Data.saveModeloRegla(st.cat, m, r);
+    Views.invalidar(); Router.refresh();
+  },
+  async toggleModeloTier(m, adicId, tier){
+    const st=Views.F.modelos; const key=st.cat+'::'+m.toLowerCase();
+    const r = (Data.s.config.modeloReglas||{})[key]; if(!r) return;
+    const link = r.adicionales.find(l=>l.id===adicId); if(!link) return;
+    const a = (Data.s.config.adicionales||[]).find(d=>d.id===adicId);
+    let ts = (link.tiers&&link.tiers.length) ? link.tiers.slice()
+      : ((a&&a.tiersDefault&&a.tiersDefault.length) ? a.tiersDefault.slice() : TIERS.map(t=>t.key));
+    ts = ts.includes(tier) ? ts.filter(t=>t!==tier) : ts.concat([tier]);
+    link.tiers = ts;
+    await Data.saveModeloRegla(st.cat, m, r);
+    Views.invalidar(); Router.refresh();
+  },
+
+  /* ============================================================
      LISTA DE COSTOS — tabla editable (fuente de los costos) + adicionales
      ============================================================ */
   listaCostos(){
@@ -303,7 +463,8 @@ Object.assign(Views, {
   /** Modal para crear/editar un adicional (idx=-1 => nuevo). */
   editarAdicional(idx){
     const adics = Data.s.config.adicionales || [];
-    const a = idx>=0 ? adics[idx] : {nombre:'', tipo:'pct', valor:5, modelos:[], categoriaId:''};
+    const a = idx>=0 ? adics[idx] : {nombre:'', tipo:'pct', valor:5, tiersDefault:TIERS.map(t=>t.key)};
+    const tsDef = a.tiersDefault && a.tiersDefault.length ? a.tiersDefault : TIERS.map(t=>t.key);
     UI.modal(idx>=0?'Editar adicional':'Nuevo adicional',
       `<div style="display:grid;gap:12px">
         <div><label class="inp-lbl">Nombre</label>
@@ -317,12 +478,12 @@ Object.assign(Views, {
           <div style="flex:1"><label class="inp-lbl" id="adValLbl">${a.tipo==='pct'?'Porcentaje (%)':'Monto fijo ($)'}</label>
             <input id="adVal" class="inp" type="number" step="0.1" style="width:100%" value="${a.valor||''}"></div>
         </div>
-        <div><label class="inp-lbl">Categoría (opcional — dejá vacío para todas)</label>
-          ${Views.selCat('adCat', a.categoriaId||'', '')}</div>
-        <div><label class="inp-lbl">Modelos que lo llevan</label>
-          <input id="adMods" class="inp" style="width:100%" value="${esc((a.modelos||[]).join(', '))}"
-            placeholder="Chicago, Denver">
-          <div class="hint" style="margin-top:4px">Separados por coma. Alcanza con parte del nombre (ej: "Chicago" matchea "Cómoda Chicago Big").</div></div>
+        <div><label class="inp-lbl">Terminaciones por defecto</label>
+          <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12px;margin-top:4px">
+            ${TIERS.map(t=>`<label style="display:flex;align-items:center;gap:5px;cursor:pointer">
+              <input type="checkbox" class="adTierChk" value="${t.key}" ${tsDef.includes(t.key)?'checked':''}> ${esc(t.label)}</label>`).join('')}
+          </div>
+          <div class="hint" style="margin-top:5px">A qué terminaciones se suma por defecto. Después, en cada modelo, podés cambiarlo.</div></div>
       </div>`,
       `<button class="btn" onclick="UI.closeAll()">Cancelar</button>
        <button class="btn btn-blue" onclick="Views.guardarAdicional(${idx})">Guardar</button>`);
@@ -332,17 +493,17 @@ Object.assign(Views, {
     const nombre = (document.getElementById('adNom').value||'').trim();
     const tipo = document.getElementById('adTipo').value;
     const valor = parseFloat(document.getElementById('adVal').value)||0;
-    const categoriaId = document.getElementById('adCat').value||'';
-    const modelos = (document.getElementById('adMods').value||'').split(',').map(s=>s.trim()).filter(Boolean);
+    const tiersDefault = [...document.querySelectorAll('.adTierChk:checked')].map(c=>c.value);
     if(!nombre){ UI.toast('Poné un nombre','err'); return; }
     if(!valor){ UI.toast('Poné un valor','err'); return; }
+    if(!tiersDefault.length){ UI.toast('Elegí al menos una terminación','err'); return; }
     if(!Data.s.config.adicionales) Data.s.config.adicionales = [];
     const rec = {id: idx>=0?(Data.s.config.adicionales[idx].id||Date.now()):Date.now(),
-      nombre, tipo, valor, modelos, categoriaId};
+      nombre, tipo, valor, tiersDefault};
     if(idx>=0) Data.s.config.adicionales[idx] = rec;
     else Data.s.config.adicionales.push(rec);
     const ok = await Data.saveAdicionales();
-    if(ok){ Data.log('Adicional', nombre, `${tipo==='pct'?valor+'%':money(valor)} · ${modelos.join(', ')||'sin modelos'}`);
+    if(ok){ Data.log('Adicional', nombre, `${tipo==='pct'?valor+'%':money(valor)}`);
       Views.invalidar(); UI.closeAll(); Router.refresh(); UI.toast('Adicional guardado','ok'); }
   },
 
@@ -578,7 +739,9 @@ Object.assign(Views, {
           <td class="num ${nCB?'':'t-red strong'}">${nCB||'sin tabla'}</td>
           <td class="num">${(c.targetNegro||cfg.targetNegro).toFixed(2).replace('.',',')}</td>
           <td class="num">${(c.targetOtro||cfg.targetOtro).toFixed(2).replace('.',',')}</td>
-          <td class="num"><button class="btn btn-sm" onclick="Views.tablaCostos('${c.id}')">Ver tabla de costos</button></td>
+          <td class="num" style="white-space:nowrap">
+            <button class="btn btn-sm" onclick="Views.verModelos('${c.id}')">Ver modelos</button>
+            <button class="btn btn-sm" onclick="Views.tablaCostos('${c.id}')">Ver tabla de costos</button></td>
         </tr>`; }).join('')}</tbody></table></div></div>`;
   },
 

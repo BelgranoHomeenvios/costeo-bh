@@ -605,3 +605,9 @@ input[type=range]{width:100%;accent-color:var(--blue)}
   .main{margin-left:0}
   .card{break-inside:avoid;box-shadow:none}
 }
+
+/* Pantalla de modelos */
+.modelo-row{display:flex;justify-content:space-between;align-items:center;padding:11px 15px;cursor:pointer;transition:background .12s}
+.modelo-row:hover{background:var(--bg)}
+.chev{color:var(--mut);font-size:12px;width:12px;display:inline-block}
+.cell-adic{background:var(--amber-l)}

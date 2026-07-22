@@ -79,9 +79,10 @@ const Data = (() => {
       s.historial = (hist||[]).map(h=>({id:h.id, fecha:h.fecha, tipo:h.tipo,
         objetivo:h.objetivo, detalle:h.detalle, productId:h.product_id, usuario:h.usuario}));
 
-      const {data:sc} = await Supa.rent.from('productos_sin_costo').select('*').limit(1000);
-      s.sinCosto = (sc||[]).map(r=>({id:r.id, categoriaId:r.categoria_id, modelo:r.modelo,
-        variantes:r.variantes||{}, medida:r.medida, precioLista:Number(r.precio_lista)||0}));
+      const sc = await Supa.traerTodo('productos_sin_costo');
+      s.sinCosto = sc.map(r=>({id:r.id, categoriaId:r.categoria_id, modelo:r.modelo,
+        variantes:r.variantes||{}, medida:r.medida, precioLista:Number(r.precio_lista)||0,
+        tnVariantId:r.tn_variant_id ?? null, tnProductId:r.tn_product_id ?? null}));
     },
 
     /** Guarda UN producto (edición puntual). No toca los otros 5.526. */
@@ -229,14 +230,18 @@ const Data = (() => {
         precios.map(r => [String(r.variant_id), Number(r.precio)]));
 
       let vinculados=0, aplicados=0, cambiados=0;
-      for(const p of s.productos){
-        if(p.tnVariantId == null) continue;
-        vinculados++;
-        const nuevo = porVariante.get(String(p.tnVariantId));
-        if(nuevo == null || !isFinite(nuevo)) continue;
-        aplicados++;
-        if((Number(p.precioLista)||0) !== nuevo){ p.precioLista = nuevo; cambiados++; }
-      }
+      const pisar = arr => {
+        for(const p of arr){
+          if(p.tnVariantId == null) continue;
+          vinculados++;
+          const nuevo = porVariante.get(String(p.tnVariantId));
+          if(nuevo == null || !isFinite(nuevo)) continue;
+          aplicados++;
+          if((Number(p.precioLista)||0) !== nuevo){ p.precioLista = nuevo; cambiados++; }
+        }
+      };
+      pisar(s.productos);   // costeados
+      pisar(s.sinCosto);    // por cotizar (mismo mecanismo, por tnVariantId)
       return {
         actualizadas: (res && res.actualizadas != null) ? res.actualizadas : precios.length,
         enTN: precios.length, vinculados, aplicados, cambiados

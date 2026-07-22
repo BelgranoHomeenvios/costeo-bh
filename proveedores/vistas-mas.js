@@ -1450,6 +1450,83 @@ Object.assign(Views, {
       historial:Data.s.historial, fecha:new Date().toISOString()
     }), 'application/json');
     UI.toast('Respaldo generado','ok');
+  },
+
+  /* ============================================================
+     POR COTIZAR — catálogo de Tienda Nube todavía sin costo.
+     Vista aparte de los costeados: qué muebles hay que cotizar.
+     ============================================================ */
+  cotizar(){
+    const scs = Data.s.sinCosto || [];
+    const f = Views.F.cotizar || (Views.F.cotizar = {cat:'', q:''});
+    if(!scs.length) return `
+      <div class="page-head"><div><h2>Por cotizar</h2>
+        <div class="sub">Productos de Tienda Nube todavía sin costo cargado</div></div></div>
+      <div class="card"><div class="card-body">Todavía no hay productos sin costo cargados.</div></div>`;
+
+    const catList = [...new Set(scs.map(p=>p.categoriaId))]
+      .map(id=>({id, nombre:Data.catNombre(id), n:scs.filter(p=>p.categoriaId===id).length}))
+      .sort((a,b)=>b.n-a.n);
+
+    const q = (f.q||'').trim().toLowerCase();
+    let sel = scs;
+    if(f.cat) sel = sel.filter(p=>p.categoriaId===f.cat);
+    if(q)     sel = sel.filter(p=>(p.modelo||'').toLowerCase().includes(q));
+
+    const gmap = {};
+    sel.forEach(p=>{ const k=p.categoriaId+'::'+p.modelo;
+      (gmap[k]=gmap[k]||{modelo:p.modelo, catId:p.categoriaId, items:[]}).items.push(p); });
+    const grupos = Object.values(gmap).sort((a,b)=>
+      a.catId===b.catId ? String(a.modelo||'').localeCompare(String(b.modelo||''))
+                        : Data.catNombre(a.catId).localeCompare(Data.catNombre(b.catId)));
+
+    const filas = grupos.map(g=>{
+      const precios = g.items.map(x=>Number(x.precioLista)||0).filter(v=>v>0);
+      const min = precios.length?Math.min(...precios):0, max = precios.length?Math.max(...precios):0;
+      const medidas = [...new Set(g.items.map(x=>x.medida).filter(Boolean))];
+      return `<tr>
+        <td class="strong">${esc(g.modelo||'—')}</td>
+        <td>${esc(Data.catNombre(g.catId))}</td>
+        <td class="num">${g.items.length}</td>
+        <td class="t-sec">${medidas.slice(0,6).map(esc).join(', ')}${medidas.length>6?'…':''}</td>
+        <td class="num">${min?(min===max?money(min):money(min)+'–'+money(max)):'—'}</td>
+      </tr>`;
+    }).join('');
+
+    return `
+      <div class="page-head">
+        <div><h2>Por cotizar</h2>
+          <div class="sub">${scs.length.toLocaleString('es-AR')} variantes de Tienda Nube sin costo cargado</div></div>
+      </div>
+      <div class="kpi-grid">
+        ${UI.kpi({label:'Variantes por cotizar', value:scs.length.toLocaleString('es-AR'),
+          icon:'box', bg:'var(--gray-l)', color:'var(--sec)'})}
+        ${UI.kpi({label:'Modelos distintos',
+          value:[...new Set(scs.map(p=>p.categoriaId+'::'+p.modelo))].length.toLocaleString('es-AR'),
+          icon:'tag', bg:'var(--blue-l)', color:'var(--blue)'})}
+        ${UI.kpi({label:'Categorías', value:catList.length,
+          icon:'chart', bg:'var(--green-l)', color:'var(--green)'})}
+      </div>
+      <div class="card mb"><div class="card-body" style="display:flex;gap:9px;flex-wrap:wrap;align-items:center">
+        <select class="inp" style="max-width:280px" onchange="Views.setCotizar('cat', this.value)">
+          <option value="">Todas las categorías (${scs.length.toLocaleString('es-AR')})</option>
+          ${catList.map(c=>`<option value="${esc(c.id)}" ${f.cat===c.id?'selected':''}>${esc(c.nombre)} (${c.n.toLocaleString('es-AR')})</option>`).join('')}
+        </select>
+        <input class="inp" style="max-width:240px" placeholder="Buscar modelo…" value="${esc(f.q||'')}"
+          oninput="Views.setCotizar('q', this.value)">
+        <div class="spacer"></div><span class="hint">${grupos.length.toLocaleString('es-AR')} modelos</span>
+      </div></div>
+      <div class="card"><div class="tbl-wrap"><table class="tbl"><thead><tr>
+        <th>Modelo</th><th>Categoría</th><th class="num">Variantes</th><th>Medidas</th><th class="num">Precio TN</th>
+      </tr></thead><tbody>${filas || '<tr><td colspan="5" class="t-sec">Sin resultados.</td></tr>'}</tbody></table></div></div>`;
+  },
+
+  setCotizar(k, v){
+    Views.F.cotizar = {...(Views.F.cotizar||{cat:'',q:''}), [k]:v};
+    const foco = k==='q';
+    Router.refresh();
+    if(foco){ const i=document.querySelector('#view input[placeholder^="Buscar modelo"]');
+      if(i){ i.focus(); i.setSelectionRange(i.value.length,i.value.length); } }
   }
 });
 

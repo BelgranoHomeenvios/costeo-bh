@@ -11,7 +11,7 @@ const Views = (() => {
           sort:'aumentoPct', dir:-1, page:0, per:50},
     rent:{cat:''},
     sim:{prodId:null, costo:null, precio:null, desc:null, target:null},
-    pend:{tipo:'', cat:''}, prevN:150
+    pend:{tipo:'', cat:''}, cotizar:{cat:'', q:''}, prevN:150
   };
   let cacheCalc = null;
   const calcAll = () => (cacheCalc = Calc.todos());

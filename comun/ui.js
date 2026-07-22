@@ -245,6 +245,7 @@ const Router = (() => {
      paginas:[
        {id:'resumen',      label:'Resumen',                 icon:'home'},
        {id:'productos',    label:'Productos',               icon:'box'},
+       {id:'cotizar',      label:'Por cotizar',             icon:'tag'},
        {id:'rentabilidad', label:'Análisis de rentabilidad',icon:'chart'},
        {id:'simulador',    label:'Simulador de precios',    icon:'sim'},
        {id:'costos',       label:'Actualización de costos', icon:'refresh'},

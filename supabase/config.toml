@@ -7,3 +7,6 @@ project_id = "costeo-bh"
 # la seguridad de datos la dan las RLS del esquema rentabilidad.
 [functions.sync-precios]
 verify_jwt = false
+
+[functions.sync-catalogo]
+verify_jwt = false

@@ -16,7 +16,8 @@ const Data = (() => {
     margenMinimo:0.45,       // margen mínimo aceptable
     umbralSospecha:3.5,      // markup por encima del cual el dato es sospechoso
     redondeo:1000,           // redondeo del precio sugerido
-    adicionales:[]           // extras por modelo: {id,nombre,tipo:'pct'|'fijo',valor,modelos:[],categoriaId?}
+    adicionales:[],          // extras por modelo: {id,nombre,tipo:'pct'|'fijo',valor,tiersDefault:[]}
+    modeloReglas:{}          // regla por modelo: 'catId::modelo' → {fuente,adicionales:[{id,tiers}]}
   };
 
   const s = {
@@ -115,6 +116,17 @@ const Data = (() => {
       return true;
     },
 
+    /** Guarda la regla de un modelo (fuente + adicionales con sus terminaciones). */
+    async saveModeloRegla(catId, modelo, regla){
+      if(!s.config.modeloReglas) s.config.modeloReglas = {};
+      const key = catId + '::' + String(modelo||'').toLowerCase();
+      if(regla) s.config.modeloReglas[key] = regla;
+      else delete s.config.modeloReglas[key];
+      const {error} = await Supa.rent.from('config').upsert({id:1, valores:s.config});
+      if(error){ UI.toast('No pude guardar la regla del modelo: '+error.message,'err'); return false; }
+      return true;
+    },
+
     /** Edita/crea una fila de la tabla de costos (una celda: categoría+medida+tier). */
     async guardarCostoCelda(categoriaId, medida, tier, costo){
       const fila = {categoria_id:categoriaId, medida, tier, costo:Number(costo)||0};
@@ -199,21 +211,39 @@ const Calc = (() => {
     return r ? Number(r.costo)||0 : 0;
   }
 
-  /** Adicionales aplicables a un producto según su modelo. */
-  /** Adicionales que aplican a un producto. Un adicional tiene:
-   *  {id, nombre, tipo:'pct'|'fijo', valor, modelos:[...], categoriaId?}
-   *  y aplica si el nombre del modelo del producto contiene alguno de los
-   *  modelos listados (y, si tiene categoriaId, si coincide la categoría). */
+  /** Adicionales que aplican a un producto, según la regla de su modelo y la
+   *  terminación (tier) del producto. Estructura:
+   *  - Definición del adicional: {id, nombre, tipo:'pct'|'fijo', valor, tiersDefault:[...]}
+   *  - Regla por modelo (config.modeloReglas['catId::modelo']):
+   *      {fuente:'lista'|'propio', adicionales:[{id, tiers:[...] (opcional, pisa el default)}]}
+   *  Un adicional solo suma si la terminación del producto está en sus tiers.
+   *  Los tiers vacíos o ausentes = aplica a todas. */
   function adicionales(p){
     let pct = 0, fijo = 0;
-    const modelo = (p.modelo||'').toLowerCase();
-    (Data.s.config.adicionales||[]).forEach(a => {
-      if(a.categoriaId && a.categoriaId !== p.categoriaId) return;
-      const aplica = (a.modelos||[]).some(m => m && modelo.includes(String(m).toLowerCase()));
-      if(!aplica) return;
+    const defs = Data.s.config.adicionales || [];
+    const todasTier = TIERS.map(t=>t.key);
+    const sumar = (a, tiers) => {
+      const t = (tiers && tiers.length) ? tiers : (a.tiersDefault && a.tiersDefault.length ? a.tiersDefault : todasTier);
+      if(!t.includes(p.tier)) return;
       if(a.tipo === 'pct') pct += (Number(a.valor)||0)/100;
       else fijo += Number(a.valor)||0;
-    });
+    };
+    const key = p.categoriaId + '::' + (p.modelo||'').toLowerCase();
+    const regla = (Data.s.config.modeloReglas||{})[key];
+    if(regla && regla.adicionales){
+      regla.adicionales.forEach(link=>{
+        const a = defs.find(d=>d.id===link.id); if(a) sumar(a, link.tiers);
+      });
+    } else {
+      // fallback: adicionales viejos que matchean por nombre de modelo
+      const modelo = (p.modelo||'').toLowerCase();
+      defs.forEach(a=>{
+        if(!a.modelos) return;
+        if(a.categoriaId && a.categoriaId !== p.categoriaId) return;
+        if(!(a.modelos||[]).some(m => m && modelo.includes(String(m).toLowerCase()))) return;
+        sumar(a, a.tiers);
+      });
+    }
     return {pct, fijo};
   }
 

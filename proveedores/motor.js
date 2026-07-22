@@ -17,7 +17,8 @@ const Data = (() => {
     umbralSospecha:3.5,      // markup por encima del cual el dato es sospechoso
     redondeo:1000,           // redondeo del precio sugerido
     adicionales:[],          // extras por modelo: {id,nombre,tipo:'pct'|'fijo',valor,tiersDefault:[]}
-    modeloReglas:{}          // regla por modelo: 'catId::modelo' → {fuente,adicionales:[{id,tiers}]}
+    modeloReglas:{},         // regla por modelo: 'catId::modelo' → {fuente,adicionales:[{id,tiers}]}
+    hierros:[]               // lista única: {id,largo,alto,prof,precio,categorias:[],modelos:[]}
   };
 
   const s = {
@@ -124,6 +125,13 @@ const Data = (() => {
       else delete s.config.modeloReglas[key];
       const {error} = await Supa.rent.from('config').upsert({id:1, valores:s.config});
       if(error){ UI.toast('No pude guardar la regla del modelo: '+error.message,'err'); return false; }
+      return true;
+    },
+
+    /** Guarda la lista de hierros (viven dentro de la configuración). */
+    async saveHierros(){
+      const {error} = await Supa.rent.from('config').upsert({id:1, valores:s.config});
+      if(error){ UI.toast('No pude guardar los hierros: '+error.message,'err'); return false; }
       return true;
     },
 
@@ -253,6 +261,31 @@ const Calc = (() => {
     return v.includes('negr');
   }
 
+  /** Extrae [largo, alto] de una medida de texto tipo "100x40x30".
+   *  Asume largo = primer número, alto = último número. */
+  function largoAlto(med){
+    const ns = String(med||'').toLowerCase().replace(/×/g,'x').match(/[\d.]+/g);
+    if(!ns || !ns.length) return [null, null];
+    const nums = ns.map(Number);
+    return [nums[0], nums[nums.length-1]];
+  }
+
+  /** Hierro que le corresponde a un producto: debe estar asignado a su
+   *  categoría o modelo, y coincidir largo + alto con la medida del producto. */
+  function hierroDe(p){
+    const hierros = Data.s.config.hierros || [];
+    if(!hierros.length) return null;
+    const [lp, ap] = largoAlto(p.medidaCosteo || p.medida);
+    if(lp==null) return null;
+    const modelo = (p.modelo||'').toLowerCase();
+    return hierros.find(h=>{
+      const aplicaCat = (h.categorias||[]).includes(p.categoriaId);
+      const aplicaMod = (h.modelos||[]).some(m => m && modelo.includes(String(m).toLowerCase()));
+      if(!aplicaCat && !aplicaMod) return false;
+      return Number(h.largo)===lp && Number(h.alto)===ap;
+    }) || null;
+  }
+
   /** Cálculo completo de un producto. Devuelve todos los indicadores. */
   function producto(p){
     const cfg = Data.s.config;
@@ -261,7 +294,9 @@ const Calc = (() => {
       : costoTabla(p.categoriaId, p.medidaCosteo, p.tier);
     const {pct, fijo} = adicionales(p);
     const ajuste = Number(p.ajusteManual)||0;
-    const costoFinal = base>0 ? base*(1+pct) + fijo + Number(p.adicional||0) + ajuste : 0;
+    const hierro = hierroDe(p);
+    const costoHierro = hierro ? Number(hierro.precio)||0 : 0;
+    const costoFinal = base>0 ? base*(1+pct) + fijo + costoHierro + Number(p.adicional||0) + ajuste : 0;
 
     const lista = Number(p.precioLista)||0;
     const efectivo = lista * (1 - cfg.descuento);
@@ -332,6 +367,6 @@ const Calc = (() => {
     return (prods||Data.s.productos).map(p => ({p, c: producto(p)}));
   }
 
-  return {costoTabla, adicionales, producto, simular, resumen, todos, llevaNegro};
+  return {costoTabla, adicionales, producto, simular, resumen, todos, llevaNegro, hierroDe};
 })();
 

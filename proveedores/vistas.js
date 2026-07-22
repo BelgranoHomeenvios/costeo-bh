@@ -6,7 +6,7 @@ const Views = (() => {
   /* filtros persistentes entre navegaciones */
   const F = {
     prod:{cat:'', modelo:'', estado:'', medida:'', term:'', vars:{}, q:'',
-          soloAumentar:false, incompletos:false, revisar:false,
+          soloAumentar:false, incompletos:false, revisar:false, modeloAbierto:false,
           sort:'aumentoPct', dir:-1, page:0, per:50},
     rent:{cat:''},
     sim:{prodId:null, costo:null, precio:null, desc:null, target:null},
@@ -25,6 +25,26 @@ const Views = (() => {
       <option value="">Todas las categorías</option>
       ${cats.map(c=>`<option value="${c.id}" ${val===c.id?'selected':''}>${esc(c.nombre)}</option>`).join('')}
     </select>`;
+  }
+
+  /** Para mostrar: si el modelo empieza repitiendo el nombre de su categoría
+   *  ("Comoda Atlanta Big" bajo "Cómodas"), lo saca — ya se ve en la columna
+   *  de al lado. Compara palabra por palabra, sin tildes y sin plural, así
+   *  tolera "Mesas de Luz" → "Mesa De Luz X" o "Muebles TV" → "Mueble De Tv X". */
+  function sinPrefijoCategoria(modelo, catNombre){
+    const norm = s => s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase();
+    const singular = w => (w.length>3 && w.endsWith('S')) ? w.slice(0,-1) : w;
+    const CONECTORES = new Set(['DE','DEL','LA','LOS','LAS']);
+    const catWords = catNombre.split(/\s+/).map(norm).map(singular);
+    const modWords = modelo.split(/\s+/);
+    let i=0, j=0;
+    while(i<catWords.length && j<modWords.length){
+      const mw = norm(modWords[j]);
+      if(mw===catWords[i] || singular(mw)===catWords[i]){ i++; j++; continue; }
+      if(CONECTORES.has(mw)){ j++; continue; }
+      break;
+    }
+    return (i===catWords.length && j>0) ? modWords.slice(j).join(' ') : modelo;
   }
 
   function nPendientes(){
@@ -277,6 +297,7 @@ const Views = (() => {
     /* --- Opciones en cascada: cada filtro se calcula sobre lo que dejan pasar
        los anteriores, así nunca ofrece una combinación que no existe. --- */
     const enCat = Data.s.productos.filter(p=>!f.cat||p.categoriaId===f.cat);
+    const modelos = [...new Set(enCat.map(p=>p.modelo).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
     const enMod = enCat.filter(p=>!f.modelo||p.modelo===f.modelo);
     const medidas = [...new Set(enMod.map(p=>p.medida).filter(Boolean))].sort((a,b)=>medSort(a)-medSort(b));
     const enMed = enMod.filter(p=>!f.medida||(p.medida||'')===f.medida);
@@ -298,13 +319,15 @@ const Views = (() => {
     const tbl = !pag.length ? UI.empty('Sin resultados','Probá cambiando los filtros.')
       : `<div class="tbl-wrap"><table class="tbl"><thead><tr>
         ${[['categoriaId','Categoría',0],['modelo','Modelo',0],['medida','Medida',0],
-           ['estructura','Estructura',0],['variante2','Variante 2',0],
+           ['estructura','Variante 1',0],['variante2','Variante 2',0],
            ['costoFinal','Costo',1],['efectivo','P. efectivo',1],
            ['ganancia','Ganancia',1],['margen','Margen',1],['markup','Markup vs objetivo',1],
            ['aumentoPct','Aum. sugerido',1],['estado','Estado',0]]
           .map(([k,l,n])=>`<th class="${n?'num ':''}sortable ${k===f.sort?'sorted':''}"
             onclick="Views.sortProd('${k}')">${l}<span class="arr">${
-            k===f.sort?(f.dir>0?'↑':'↓'):'↕'}</span></th>`).join('')}
+            k===f.sort?(f.dir>0?'↑':'↓'):'↕'}</span>${k==='modelo'?
+            `<span onclick="event.stopPropagation();Views.toggleModeloFiltro()"
+               title="Filtrar por modelo" style="margin-left:5px;opacity:.7">▾</span>`:''}</th>`).join('')}
       </tr></thead><tbody>${pag.map(({p,c})=>{
         const est = (p.variantes||{}).Estructura || '';
         const [clave2,val2] = Object.entries(p.variantes||{}).find(([k])=>k!=='Estructura') || ['',''];
@@ -312,10 +335,10 @@ const Views = (() => {
         <tr class="clickable" onclick="Views.ficha('${p.id}')">
           <td class="t-sec">${esc(Data.catNombre(p.categoriaId))}</td>
           <td class="strong"><a href="#" onclick="event.stopPropagation();Views.setProd('modelo','${esc(p.modelo)}');return false"
-            title="Filtrar por este modelo">${esc(p.modelo)}</a></td>
+            title="Filtrar por este modelo">${esc(sinPrefijoCategoria(p.modelo, Data.catNombre(p.categoriaId)))}</a></td>
           <td class="t-sec">${esc(p.medida||'—')}</td>
-          <td class="t-sec">${est?`<a href="#" onclick="event.stopPropagation();Views.setVar('Estructura','${esc(est)}');return false"
-            title="Filtrar por esta estructura">${esc(est)}</a>`:'—'}</td>
+          <td class="t-sec" style="font-size:11.5px">${est?`<a href="#" onclick="event.stopPropagation();Views.setVar('Estructura','${esc(est)}');return false"
+            title="Filtrar por Estructura: ${esc(est)}">Estructura: ${esc(est)}</a>`:'—'}</td>
           <td class="t-sec" style="font-size:11.5px">${val2?`<a href="#" onclick="event.stopPropagation();Views.setVar('${esc(clave2)}','${esc(val2)}');return false"
             title="Filtrar por ${esc(clave2)}: ${esc(val2)}">${esc(clave2)}: ${esc(val2)}</a>`:'—'}</td>
           <td class="num">${UI.cellEdit(p.id,'costo',c.costoFinal, c.baseDeTabla?'de tabla':'sin costo')}</td>
@@ -395,6 +418,13 @@ const Views = (() => {
               onclick="Views.toggleProd('${k}')">${esc(l)}
               <span style="opacity:.75">${n.toLocaleString('es-AR')}</span></button>`).join('')}
         </div>
+        ${f.modeloAbierto ? `<div class="filters" style="margin-top:9px">
+          <span class="hint" style="align-self:center">Filtrar por modelo:</span>
+          <select class="inp" style="max-width:280px" autofocus onchange="Views.setProd('modelo',this.value)">
+            <option value="">Todos los modelos</option>
+            ${modelos.map(m=>`<option value="${esc(m)}" ${f.modelo===m?'selected':''}>${esc(m)}</option>`).join('')}
+          </select>
+        </div>` : ''}
       </div></div>
       <div class="card">${tbl}
         ${nPag>1?`<div class="pag">
@@ -792,8 +822,9 @@ const Views = (() => {
       F.prod.page=0; Router.refresh(); },
     sortProd(k){ if(F.prod.sort===k) F.prod.dir*=-1; else {F.prod.sort=k; F.prod.dir=-1;} Router.refresh(); },
     toggleProd(k){ F.prod[k] = !F.prod[k]; F.prod.page=0; Router.refresh(); },
+    toggleModeloFiltro(){ F.prod.modeloAbierto = !F.prod.modeloAbierto; Router.refresh(); },
     limpiarProd(){ Object.assign(F.prod,{cat:'',modelo:'',estado:'',medida:'',term:'',vars:{},q:'',
-      soloAumentar:false,incompletos:false,revisar:false,page:0}); Router.refresh(); },
+      soloAumentar:false,incompletos:false,revisar:false,modeloAbierto:false,page:0}); Router.refresh(); },
     pag(d){ F.prod.page+=d; Router.refresh(); window.scrollTo(0,0); },
     irPag(n){ F.prod.page=Math.max(0,n); Router.refresh(); window.scrollTo(0,0); },
     setSim(k,v){ F.sim[k]=parseFloat(v); Router.refresh(); },

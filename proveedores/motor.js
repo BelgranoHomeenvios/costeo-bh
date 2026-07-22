@@ -40,7 +40,10 @@ const Data = (() => {
   });
 
   function mergeCats(){
-    return DEFAULT_CATEGORIAS.concat(EXTRA_CATEGORIAS);
+    const todas = DEFAULT_CATEGORIAS.concat(EXTRA_CATEGORIAS);
+    const vistas = new Set(), unicas = [];
+    for(const c of todas){ if(!vistas.has(c.id)){ vistas.add(c.id); unicas.push(c); } }
+    return unicas;
   }
 
   return {

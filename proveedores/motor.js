@@ -323,7 +323,8 @@ const Calc = (() => {
       base, costoFinal, lista, efectivo, markup, ganancia, margen,
       target, sugerido, aumentoPct, estado, tieneCosto: costoFinal>0,
       baseDeTabla: Number(p.costoManual)>0 ? false : base>0,
-      adicPct: pct, adicFijo: fijo
+      adicPct: pct, adicFijo: fijo,
+      costoHierro, hierro: hierro ? {largo:hierro.largo, alto:hierro.alto, precio:hierro.precio} : null
     };
   }
 

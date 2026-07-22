@@ -242,7 +242,11 @@ const Views = (() => {
     rows.sort((a,b)=>{
       if(k==='categoriaId') return f.dir * Data.catNombre(a.p.categoriaId).localeCompare(Data.catNombre(b.p.categoriaId));
       if(k==='medida') return f.dir * (medSort(a.p.medida)-medSort(b.p.medida));
-      if(k==='variantes') return f.dir * variantesTxt(a.p).localeCompare(variantesTxt(b.p));
+      if(k==='estructura') return f.dir * String((a.p.variantes||{}).Estructura||'').localeCompare(String((b.p.variantes||{}).Estructura||''));
+      if(k==='variante2'){
+        const v2 = p => (Object.entries(p.variantes||{}).find(([kk])=>kk!=='Estructura')||['',''])[1] || '';
+        return f.dir * String(v2(a.p)).localeCompare(String(v2(b.p)));
+      }
       const va = k in a.c ? a.c[k] : (a.p[k]||''), vb = k in b.c ? b.c[k] : (b.p[k]||'');
       if(typeof va === 'string') return f.dir * va.localeCompare(vb);
       return f.dir * ((va||0)-(vb||0));
@@ -293,19 +297,27 @@ const Views = (() => {
 
     const tbl = !pag.length ? UI.empty('Sin resultados','Probá cambiando los filtros.')
       : `<div class="tbl-wrap"><table class="tbl"><thead><tr>
-        ${[['categoriaId','Categoría',0],['modelo','Modelo',0],['medida','Medida',0],['variantes','Variantes',0],
+        ${[['categoriaId','Categoría',0],['modelo','Modelo',0],['medida','Medida',0],
+           ['estructura','Estructura',0],['variante2','Variante 2',0],
            ['costoFinal','Costo',1],['efectivo','P. efectivo',1],
            ['ganancia','Ganancia',1],['margen','Margen',1],['markup','Markup vs objetivo',1],
            ['aumentoPct','Aum. sugerido',1],['estado','Estado',0]]
           .map(([k,l,n])=>`<th class="${n?'num ':''}sortable ${k===f.sort?'sorted':''}"
             onclick="Views.sortProd('${k}')">${l}<span class="arr">${
             k===f.sort?(f.dir>0?'↑':'↓'):'↕'}</span></th>`).join('')}
-      </tr></thead><tbody>${pag.map(({p,c})=>`
+      </tr></thead><tbody>${pag.map(({p,c})=>{
+        const est = (p.variantes||{}).Estructura || '';
+        const [clave2,val2] = Object.entries(p.variantes||{}).find(([k])=>k!=='Estructura') || ['',''];
+        return `
         <tr class="clickable" onclick="Views.ficha('${p.id}')">
           <td class="t-sec">${esc(Data.catNombre(p.categoriaId))}</td>
-          <td class="strong">${esc(p.modelo)}</td>
+          <td class="strong"><a href="#" onclick="event.stopPropagation();Views.setProd('modelo','${esc(p.modelo)}');return false"
+            title="Filtrar por este modelo">${esc(p.modelo)}</a></td>
           <td class="t-sec">${esc(p.medida||'—')}</td>
-          <td class="t-sec" style="font-size:11.5px">${esc(variantesTxt(p))}</td>
+          <td class="t-sec">${est?`<a href="#" onclick="event.stopPropagation();Views.setVar('Estructura','${esc(est)}');return false"
+            title="Filtrar por esta estructura">${esc(est)}</a>`:'—'}</td>
+          <td class="t-sec" style="font-size:11.5px">${val2?`<a href="#" onclick="event.stopPropagation();Views.setVar('${esc(clave2)}','${esc(val2)}');return false"
+            title="Filtrar por ${esc(clave2)}: ${esc(val2)}">${esc(clave2)}: ${esc(val2)}</a>`:'—'}</td>
           <td class="num">${UI.cellEdit(p.id,'costo',c.costoFinal, c.baseDeTabla?'de tabla':'sin costo')}</td>
           <td class="num">${UI.cellEdit(p.id,'efectivo',c.efectivo,'sin precio')}</td>
           <td class="num ${c.ganancia<0?'t-red':''}">${c.tieneCosto?money(c.ganancia):'<span class="t-mut">—</span>'}</td>
@@ -313,9 +325,9 @@ const Views = (() => {
           <td class="num strong">${c.tieneCosto?mk(c.markup):'<span class="t-mut">—</span>'}</td>
           <td class="num ${c.aumentoPct>0.001?'t-red strong':'t-mut'}">${c.aumentoPct>0.001?pctS(c.aumentoPct):'—'}</td>
           <td>${UI.badge(c.estado)}</td>
-        </tr>`).join('')}</tbody>
+        </tr>`;}).join('')}</tbody>
         <tfoot><tr>
-          <td colspan="4">${rows.length.toLocaleString('es-AR')} productos filtrados</td>
+          <td colspan="5">${rows.length.toLocaleString('es-AR')} productos filtrados</td>
           <td class="num">${money(t.costoProm)}</td>
           <td class="num">${money(t.precioProm*(1-cfg.descuento))}</td>
           <td class="num">${money(t.gananciaTotal)}</td>

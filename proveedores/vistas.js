@@ -354,6 +354,61 @@ const Views = (() => {
     return rows;
   }
 
+  /** Dimensiones de anidado para un modelo: primero la medida, después sus
+   *  claves de variante en orden (Estructura primero, si existe). */
+  function dimsDe(items){
+    const claves = [];
+    items.forEach(({p})=>Object.keys(p.variantes||{}).forEach(k=>{ if(!claves.includes(k)) claves.push(k); }));
+    // Estructura primero, resto en el orden en que aparecieron
+    claves.sort((a,b)=>(a==='Estructura'?-1:0)-(b==='Estructura'?-1:0));
+    return ['__medida', ...claves];
+  }
+
+  /** Render recursivo del árbol: cada nivel agrupa por la dimensión actual y
+   *  se expande hasta llegar a las filas finales (variantes concretas). */
+  function nodoArbol(items, dims, depth, pathBase, expM, cfg){
+    // Nivel hoja: ya no quedan dimensiones para agrupar → mostrar filas
+    if(depth >= dims.length){
+      return `<table class="tbl arbol-hoja"><tbody>${items.map(({p,c})=>`
+        <tr class="clickable" onclick="Views.ficha('${p.id}')">
+          <td style="width:34%">${(TIERS.find(t=>t.key===p.tier)||{}).label ? `<span class="t-sec">${esc((TIERS.find(t=>t.key===p.tier)||{}).label)}</span>` : '<span class="t-mut">—</span>'}</td>
+          <td class="num">${c.tieneCosto?money(c.costoFinal):'<span class="t-mut">sin costo</span>'}</td>
+          <td class="num">${c.lista?money(c.efectivo):'<span class="t-mut">sin precio</span>'}</td>
+          <td class="num ${c.tieneCosto&&c.margen<cfg.margenMinimo?'t-red':''}">${c.tieneCosto?pct1(c.margen):'—'}</td>
+          <td class="num strong">${c.tieneCosto?mk(c.markup):'—'}</td>
+          <td class="num ${c.aumentoPct>0.001?'t-red strong':'t-mut'}">${c.aumentoPct>0.001?pctS(c.aumentoPct):'—'}</td>
+          <td class="num"><button class="icon-btn" title="Abrir ficha">${Icon('edit')}</button></td>
+        </tr>`).join('')}</tbody></table>`;
+    }
+    const dim = dims[depth];
+    // agrupar por el valor de la dimensión actual
+    const grupos = {};
+    items.forEach(it=>{
+      const val = dim==='__medida' ? (it.p.medida||'—') : String((it.p.variantes||{})[dim]||'—');
+      (grupos[val] = grupos[val] || []).push(it);
+    });
+    const claves = Object.keys(grupos).sort((a,b)=> dim==='__medida' ? medSort(a)-medSort(b) : a.localeCompare(b));
+    const etiqueta = dim==='__medida' ? 'Medida' : dim;
+
+    return claves.map(val=>{
+      const sub = grupos[val];
+      const path = pathBase+'|'+depth+'·'+val;
+      const abierto = !!expM[path];
+      // costo desde y estado del subgrupo, para dar contexto
+      const cost = sub.filter(x=>x.c.tieneCosto).map(x=>x.c.costoFinal);
+      const desde = cost.length?Math.min(...cost):0;
+      return `<div class="arbol-nodo" style="margin-left:${depth*14}px">
+        <div class="arbol-row" onclick="Views.toggleProdModelo('${escJs(path)}')">
+          <span class="chev">${abierto?'▾':'▸'}</span>
+          <span class="arbol-dim">${esc(etiqueta)}</span>
+          <b>${esc(val)}</b>
+          <span class="t-mut" style="font-size:11px">· ${sub.length} ${sub.length===1?'variante':'variantes'}${desde?` · desde ${money(desde)}`:''}</span>
+        </div>
+        ${abierto?`<div class="arbol-hijo">${nodoArbol(sub, dims, depth+1, path, expM, cfg)}</div>`:''}
+      </div>`;
+    }).join('');
+  }
+
   function productos(){
     if(!Data.s.productos.length) return sinDatos();
     const f = F.prod, cfg = Data.s.config;
@@ -390,46 +445,63 @@ const Views = (() => {
       return {...o, k, n:o.items.length, costoDesde, margenProm:margenProm2, estado};
     }).sort((a,b)=>a.modelo.localeCompare(b.modelo));
 
+    /* Agrupar los modelos por categoría (nivel superior del árbol) */
+    const catMap = {};
+    modelosGrupos.forEach(gr=>{ (catMap[gr.catId] = catMap[gr.catId] || []).push(gr); });
+    const cats = Object.entries(catMap).map(([catId, mods])=>{
+      const algunRojo = mods.some(m=>m.estado==='rojo');
+      const algunAum = mods.some(m=>m.estado==='am');
+      const nAum = mods.filter(m=>m.estado==='am').length;
+      return {catId, nombre:Data.catNombre(catId), mods, nMod:mods.length, nAum,
+        estado: algunRojo?'rojo':(algunAum?'am':'ok')};
+    }).sort((a,b)=>a.nombre.localeCompare(b.nombre));
+
+    // ¿Hay algún filtro activo? Si sí, auto-expandimos para que se vean los resultados
+    const hayFiltro = !!(f.q || (f.medidas&&f.medidas.length) || (f.terms&&f.terms.length)
+      || f.modelo || f.estado || f.soloAumentar || f.sinCosto || f.revisar);
+
     const badgeEstado = e => e==='rojo'
       ? '<span class="badge b-red"><span class="dot"></span>Rentab. baja</span>'
       : e==='am' ? '<span class="badge b-amber"><span class="dot"></span>Para aumentar</span>'
       : '<span class="badge b-green"><span class="dot"></span>OK</span>';
 
-    const tbl = !modelosGrupos.length ? UI.empty('Sin resultados','Probá cambiando los filtros.')
+    const filaModelo = gr => {
+      const abierto = !!(f.expM||{})[gr.k] || (hayFiltro && f.modelo===gr.modelo);
+      return `<div class="prod-grp ${abierto?'open':''}" style="margin-left:14px">
+        <div class="prod-row" onclick="Views.toggleProdModelo('${escJs(gr.k)}')">
+          <span style="flex:2.4;display:flex;align-items:center;gap:8px">
+            <span class="chev">${abierto?'▾':'▸'}</span>
+            <b>${esc(sinPrefijoCategoria(gr.modelo, Data.catNombre(gr.catId)))}</b></span>
+          <span style="flex:1;text-align:center" class="t-sec">${gr.n}</span>
+          <span style="flex:1.2;text-align:right">${gr.costoDesde?money(gr.costoDesde):'<span class="t-mut">—</span>'}</span>
+          <span style="flex:1;text-align:right">${gr.margenProm?pct1(gr.margenProm):'<span class="t-mut">—</span>'}</span>
+          <span style="flex:1.3;text-align:right">${badgeEstado(gr.estado)}</span>
+        </div>
+        ${abierto?`<div class="prod-detalle">${nodoArbol(gr.items, dimsDe(gr.items), 0, gr.k, f.expM||{}, cfg)}</div>`:''}
+      </div>`;
+    };
+
+    const tbl = !cats.length ? UI.empty('Sin resultados','Probá cambiando los filtros.')
       : `<div class="tbl-wrap">
         <div class="prodh">
-          <span style="flex:2.4">Modelo</span><span style="flex:1;text-align:center">Variantes</span>
-          <span style="flex:1.2;text-align:right">Costo desde</span><span style="flex:1;text-align:right">Margen</span>
+          <span style="flex:2.4">Categoría / Modelo</span><span style="flex:1;text-align:center">Modelos</span>
+          <span style="flex:1.2;text-align:right"></span><span style="flex:1;text-align:right"></span>
           <span style="flex:1.3;text-align:right">Estado</span>
         </div>
-        ${modelosGrupos.map(gr=>{
-          const abierto = !!(f.expM||{})[gr.k];
-          return `<div class="prod-grp ${abierto?'open':''}">
-            <div class="prod-row" onclick="Views.toggleProdModelo('${escJs(gr.k)}')">
+        ${cats.map(cat=>{
+          const catKey = 'CAT::'+cat.catId;
+          const catAbierta = !!(f.expM||{})[catKey] || hayFiltro;
+          return `<div class="prod-cat ${catAbierta?'open':''}">
+            <div class="prod-catrow" onclick="Views.toggleProdModelo('${escJs(catKey)}')">
               <span style="flex:2.4;display:flex;align-items:center;gap:8px">
-                <span class="chev">${abierto?'▾':'▸'}</span>
-                <b>${esc(sinPrefijoCategoria(gr.modelo, Data.catNombre(gr.catId)))}</b></span>
-              <span style="flex:1;text-align:center" class="t-sec">${gr.n}</span>
-              <span style="flex:1.2;text-align:right">${gr.costoDesde?money(gr.costoDesde):'<span class="t-mut">—</span>'}</span>
-              <span style="flex:1;text-align:right">${gr.margenProm?pct1(gr.margenProm):'<span class="t-mut">—</span>'}</span>
-              <span style="flex:1.3;text-align:right">${badgeEstado(gr.estado)}</span>
+                <span class="chev">${catAbierta?'▾':'▸'}</span>
+                <b style="font-size:13.5px">${esc(cat.nombre)}</b></span>
+              <span style="flex:1;text-align:center" class="t-sec">${cat.nMod}</span>
+              <span style="flex:1.2;text-align:right"></span>
+              <span style="flex:1;text-align:right">${cat.nAum?`<span class="t-amber" style="font-size:11.5px">${cat.nAum} a subir</span>`:''}</span>
+              <span style="flex:1.3;text-align:right">${badgeEstado(cat.estado)}</span>
             </div>
-            ${abierto?`<div class="prod-detalle"><table class="tbl" style="font-size:11.5px"><thead><tr>
-              <th>Medida</th><th>Variante</th><th class="num">Costo</th><th class="num">P. efectivo</th>
-              <th class="num">Margen</th><th class="num">Markup</th><th class="num">Aum.</th><th></th>
-            </tr></thead><tbody>${gr.items.sort((a,b)=>medSort(a.p.medida)-medSort(b.p.medida)).map(({p,c})=>{
-              const vtxt = Object.entries(p.variantes||{}).filter(([,v])=>v!=null&&v!=='')
-                .map(([k,v])=>`${esc(k)} ${esc(v)}`).join(' · ') || '—';
-              return `<tr class="clickable" onclick="Views.ficha('${p.id}')">
-                <td class="strong">${esc(p.medida||'—')}</td>
-                <td class="t-sec">${vtxt}</td>
-                <td class="num">${c.tieneCosto?money(c.costoFinal):'<span class="t-mut">sin costo</span>'}</td>
-                <td class="num">${c.lista?money(c.efectivo):'<span class="t-mut">sin precio</span>'}</td>
-                <td class="num ${c.tieneCosto&&c.margen<cfg.margenMinimo?'t-red':''}">${c.tieneCosto?pct1(c.margen):'—'}</td>
-                <td class="num strong">${c.tieneCosto?mk(c.markup):'—'}</td>
-                <td class="num ${c.aumentoPct>0.001?'t-red strong':'t-mut'}">${c.aumentoPct>0.001?pctS(c.aumentoPct):'—'}</td>
-                <td class="num"><button class="icon-btn" title="Abrir ficha">${Icon('edit')}</button></td>
-              </tr>`;}).join('')}</tbody></table></div>`:''}
+            ${catAbierta?`<div class="prod-catbody">${cat.mods.map(filaModelo).join('')}</div>`:''}
           </div>`;
         }).join('')}
       </div>`;

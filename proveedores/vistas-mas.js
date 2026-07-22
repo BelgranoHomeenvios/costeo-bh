@@ -4,6 +4,246 @@
 Object.assign(Views, {
 
   /* ============================================================
+     LISTA DE COSTOS — tabla editable (fuente de los costos) + adicionales
+     ============================================================ */
+  listaCostos(){
+    const cat = Views.F.lista ? Views.F.lista.cat : '';
+    if(!Views.F.lista) Views.F.lista = {cat:''};
+
+    const cb = Data.s.costosBase.filter(x=>!cat || x.categoriaId===cat);
+    // agrupar por categoría + medida
+    const grupos = {};
+    cb.forEach(x=>{
+      const g = grupos[x.categoriaId] = grupos[x.categoriaId] || {};
+      (g[x.medida] = g[x.medida] || {})[x.tier] = x.costo;
+    });
+
+    const catsOrden = Object.keys(grupos).sort((a,b)=>Data.catNombre(a).localeCompare(Data.catNombre(b)));
+    const hayFilas = catsOrden.length>0;
+
+    const filasHTML = catsOrden.map(cid=>{
+      const meds = Object.keys(grupos[cid]).sort((a,b)=>medSort(a)-medSort(b));
+      return meds.map(m=>`<tr>
+        ${!cat?`<td class="t-sec">${esc(Data.catNombre(cid))}</td>`:''}
+        <td class="strong">${esc(m)}</td>
+        ${TIERS.map(t=>{
+          const v = grupos[cid][m][t.key];
+          return `<td class="num"><input class="cell-inp celda-costo" inputmode="numeric"
+            value="${v?Number(v).toLocaleString('es-AR'):''}" placeholder="—"
+            data-cat="${esc(cid)}" data-medida="${escJs(m)}" data-tier="${t.key}"
+            onblur="Views.guardarCostoBase(this)"
+            onkeydown="if(event.key==='Enter'){this.blur()}"></td>`;
+        }).join('')}
+      </tr>`).join('');
+    }).join('');
+
+    const nombreCat = cat ? Data.catNombre(cat) : 'todas las categorías';
+
+    /* --- Adicionales --- */
+    const adics = Data.s.config.adicionales || [];
+    const adicHTML = adics.length ? adics.map((a,i)=>`
+      <div class="adic-row">
+        <div>
+          <span class="adic-nom">${esc(a.nombre)}</span>
+          <span class="adic-mods">${a.categoriaId?esc(Data.catNombre(a.categoriaId))+' · ':''}${
+            (a.modelos||[]).length ? 'aplica a: '+(a.modelos||[]).map(esc).join(', ') : 'sin modelos asignados'}</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px">
+          <span class="adic-val">${a.tipo==='pct'?'+'+(Number(a.valor)||0)+'%':'+'+money(a.valor)}</span>
+          <button class="icon-btn" onclick="Views.editarAdicional(${i})" title="Editar">${Icon('edit')}</button>
+          <button class="icon-btn" onclick="Views.borrarAdicional(${i})" title="Borrar">${Icon('close')}</button>
+        </div>
+      </div>`).join('')
+      : `<div class="hint" style="padding:10px 0">Todavía no cargaste adicionales. Con "+ nuevo adicional" agregás extras como ranurado, patas o hierros.</div>`;
+
+    return `
+      <div class="page-head">
+        <div><h2>Lista de costos</h2>
+          <div class="sub">La fuente de la que salen los costos. Editás acá y todos los muebles se recalculan.</div></div>
+      </div>
+
+      <div class="card mb"><div class="card-body" style="padding:12px 16px">
+        <div class="filters">
+          <span class="hint" style="align-self:center">Categoría:</span>
+          ${Views.selCat('listaCat', cat, 'onchange="Views.setListaCat(this.value)"')}
+          <div class="spacer"></div>
+          <button class="btn btn-sm" onclick="Views.pegarExcel()">${Icon('imp')} Pegar desde Excel</button>
+          <button class="btn btn-sm" onclick="Views.aumentarPct()">Aumentar %</button>
+        </div>
+      </div></div>
+
+      <div class="card mb">
+        ${!hayFilas ? `<div class="card-body">${UI.empty('Sin filas en la tabla',
+          'Esta categoría no tiene costos cargados. Usá "Pegar desde Excel" para cargarlos.')}</div>`
+        : `<div class="tbl-wrap"><table class="tbl"><thead><tr>
+          ${!cat?'<th>Categoría</th>':''}<th>Medida</th>
+          ${TIERS.map(t=>`<th class="num">${esc(t.label)}</th>`).join('')}
+        </tr></thead><tbody>${filasHTML}</tbody></table></div>`}
+      </div>
+
+      <div class="card"><div class="card-head"><h3>Adicionales</h3>
+        <div class="spacer"></div>
+        <button class="btn btn-sm btn-blue" onclick="Views.editarAdicional(-1)">+ nuevo adicional</button></div>
+        <div class="card-body">
+          <div class="hint" style="margin-bottom:8px">Extras que se suman al precio base, en los modelos que los llevan.</div>
+          ${adicHTML}
+        </div>
+      </div>`;
+  },
+
+  setListaCat(cat){ Views.F.lista = {cat:cat||''}; Router.refresh(); },
+
+  /** Guarda el costo de una celda al salir del input. */
+  async guardarCostoBase(el){
+    const cat = el.dataset.cat, medida = el.dataset.medida, tier = el.dataset.tier;
+    const nuevo = parseNum(el.value);
+    const actual = (Data.s.costosBase.find(x=>x.categoriaId===cat&&x.medida===medida&&x.tier===tier)||{}).costo || 0;
+    if(nuevo === actual){ el.value = actual?actual.toLocaleString('es-AR'):''; return; }
+    if(nuevo < 0){ UI.toast('El costo no puede ser negativo','err'); el.value = actual?actual.toLocaleString('es-AR'):''; return; }
+    const ok = await Data.guardarCostoCelda(cat, medida, tier, nuevo);
+    if(ok){
+      Data.log('Edición de costo', `${Data.catNombre(cat)} ${medida}`,
+        `${(TIERS.find(t=>t.key===tier)||{}).label}: ${money(actual)} → ${money(nuevo)}`);
+      Views.invalidar();
+      el.value = nuevo.toLocaleString('es-AR');
+      el.classList.add('guardado');
+      UI.toast('Costo actualizado','ok');
+    }
+  },
+
+  /** Modal para pegar una tabla desde Excel (TSV). */
+  pegarExcel(){
+    const cat = Views.F.lista ? Views.F.lista.cat : '';
+    if(!cat){
+      UI.modal('Pegar desde Excel',
+        `<div class="hint" style="margin-bottom:10px">Primero elegí una categoría arriba (no "Todas"),
+         así sé a cuál cargarle los precios.</div>`,
+        `<button class="btn" onclick="UI.closeAll()">Entendido</button>`);
+      return;
+    }
+    UI.modal(`Pegar desde Excel · ${esc(Data.catNombre(cat))}`,
+      `<div class="hint" style="margin-bottom:10px">Copiá de tu Excel las columnas en este orden:
+        <b>Medida · Laqueado · Comb. blanco · Comb. paraíso · Paraíso</b> (una fila por medida) y pegalas acá.
+        Las que dejes vacías se ignoran.</div>
+       <textarea id="pegarTA" class="inp" rows="10" style="width:100%;font-family:monospace;font-size:12px"
+         placeholder="120x40x30	123710	129270	136770	149460&#10;150x40x30	..."></textarea>`,
+      `<button class="btn" onclick="UI.closeAll()">Cancelar</button>
+       <button class="btn btn-blue" onclick="Views.procesarPegado('${cat}')">Cargar filas</button>`);
+  },
+
+  async procesarPegado(cat){
+    const txt = (document.getElementById('pegarTA')||{}).value || '';
+    const lineas = txt.split('\n').map(l=>l.trim()).filter(Boolean);
+    const filas = [];
+    for(const ln of lineas){
+      const cols = ln.split(/\t|;|,/).map(c=>c.trim());
+      if(cols.length < 2) continue;
+      const medida = cols[0].toLowerCase().replace(/\s/g,'').replace(/×/g,'x');
+      TIERS.forEach((t,i)=>{
+        const raw = cols[i+1];
+        if(raw==null || raw==='') return;
+        const costo = parseNum(raw);
+        if(costo>0) filas.push({categoriaId:cat, medida, tier:t.key, costo});
+      });
+    }
+    if(!filas.length){ UI.toast('No encontré filas válidas','err'); return; }
+    UI.closeAll();
+    const res = await Data.importarCostos(filas, (h,t)=>UI.progreso&&UI.progreso(h,t));
+    Views.invalidar(); Router.refresh();
+    UI.toast(`${filas.length} precios cargados en ${Data.catNombre(cat)}`,'ok');
+  },
+
+  /** Modal para aumentar un % toda la categoría (o todas). */
+  aumentarPct(){
+    const cat = Views.F.lista ? Views.F.lista.cat : '';
+    const alcance = cat ? Data.catNombre(cat) : 'TODAS las categorías';
+    UI.modal('Aumentar precios por %',
+      `<div class="hint" style="margin-bottom:10px">Se aplica a <b>${esc(alcance)}</b>.
+        Todos los precios de la tabla se multiplican por el porcentaje.</div>
+       <label class="inp-lbl">Porcentaje de aumento</label>
+       <input id="pctInp" class="inp" type="number" step="0.1" placeholder="Ej: 8" style="width:120px"> %`,
+      `<button class="btn" onclick="UI.closeAll()">Cancelar</button>
+       <button class="btn btn-blue" onclick="Views.confirmarAumento('${cat}')">Ver impacto</button>`);
+  },
+
+  confirmarAumento(cat){
+    const pct = parseFloat((document.getElementById('pctInp')||{}).value);
+    if(!pct || pct===0){ UI.toast('Poné un porcentaje','err'); return; }
+    const factor = 1 + pct/100;
+    const afectadas = Data.s.costosBase.filter(x=>!cat||x.categoriaId===cat);
+    const alcance = cat ? Data.catNombre(cat) : 'todas las categorías';
+    UI.confirm('Confirmar aumento',
+      `Vas a aumentar <b>${pct}%</b> los <b>${afectadas.length}</b> precios de <b>${esc(alcance)}</b>.<br><br>
+       Ejemplo: un costo de ${money(100000)} pasa a ${money(Math.round(100000*factor))}.<br><br>
+       Esto recalcula el costo de todos los productos afectados. ¿Confirmás?`,
+      async ()=>{
+        const filas = afectadas.map(x=>({categoriaId:x.categoriaId, medida:x.medida, tier:x.tier,
+          costo:Math.round(x.costo*factor)}));
+        await Data.importarCostos(filas);
+        Data.log('Aumento masivo', alcance, `+${pct}% sobre ${filas.length} precios`);
+        Views.invalidar(); Router.refresh();
+        UI.toast(`Aumento de ${pct}% aplicado`,'ok');
+      }, 'Sí, aumentar');
+  },
+
+  /** Modal para crear/editar un adicional (idx=-1 => nuevo). */
+  editarAdicional(idx){
+    const adics = Data.s.config.adicionales || [];
+    const a = idx>=0 ? adics[idx] : {nombre:'', tipo:'pct', valor:5, modelos:[], categoriaId:''};
+    UI.modal(idx>=0?'Editar adicional':'Nuevo adicional',
+      `<div style="display:grid;gap:12px">
+        <div><label class="inp-lbl">Nombre</label>
+          <input id="adNom" class="inp" style="width:100%" value="${esc(a.nombre)}" placeholder="Ranurado, Patas paraíso, Hierros…"></div>
+        <div style="display:flex;gap:12px">
+          <div style="flex:1"><label class="inp-lbl">Tipo</label>
+            <select id="adTipo" class="inp" style="width:100%" onchange="document.getElementById('adValLbl').textContent=this.value==='pct'?'Porcentaje (%)':'Monto fijo ($)'">
+              <option value="pct" ${a.tipo==='pct'?'selected':''}>Porcentaje (%)</option>
+              <option value="fijo" ${a.tipo==='fijo'?'selected':''}>Monto fijo ($)</option>
+            </select></div>
+          <div style="flex:1"><label class="inp-lbl" id="adValLbl">${a.tipo==='pct'?'Porcentaje (%)':'Monto fijo ($)'}</label>
+            <input id="adVal" class="inp" type="number" step="0.1" style="width:100%" value="${a.valor||''}"></div>
+        </div>
+        <div><label class="inp-lbl">Categoría (opcional — dejá vacío para todas)</label>
+          ${Views.selCat('adCat', a.categoriaId||'', '')}</div>
+        <div><label class="inp-lbl">Modelos que lo llevan</label>
+          <input id="adMods" class="inp" style="width:100%" value="${esc((a.modelos||[]).join(', '))}"
+            placeholder="Chicago, Denver">
+          <div class="hint" style="margin-top:4px">Separados por coma. Alcanza con parte del nombre (ej: "Chicago" matchea "Cómoda Chicago Big").</div></div>
+      </div>`,
+      `<button class="btn" onclick="UI.closeAll()">Cancelar</button>
+       <button class="btn btn-blue" onclick="Views.guardarAdicional(${idx})">Guardar</button>`);
+  },
+
+  async guardarAdicional(idx){
+    const nombre = (document.getElementById('adNom').value||'').trim();
+    const tipo = document.getElementById('adTipo').value;
+    const valor = parseFloat(document.getElementById('adVal').value)||0;
+    const categoriaId = document.getElementById('adCat').value||'';
+    const modelos = (document.getElementById('adMods').value||'').split(',').map(s=>s.trim()).filter(Boolean);
+    if(!nombre){ UI.toast('Poné un nombre','err'); return; }
+    if(!valor){ UI.toast('Poné un valor','err'); return; }
+    if(!Data.s.config.adicionales) Data.s.config.adicionales = [];
+    const rec = {id: idx>=0?(Data.s.config.adicionales[idx].id||Date.now()):Date.now(),
+      nombre, tipo, valor, modelos, categoriaId};
+    if(idx>=0) Data.s.config.adicionales[idx] = rec;
+    else Data.s.config.adicionales.push(rec);
+    const ok = await Data.saveAdicionales();
+    if(ok){ Data.log('Adicional', nombre, `${tipo==='pct'?valor+'%':money(valor)} · ${modelos.join(', ')||'sin modelos'}`);
+      Views.invalidar(); UI.closeAll(); Router.refresh(); UI.toast('Adicional guardado','ok'); }
+  },
+
+  borrarAdicional(idx){
+    const a = (Data.s.config.adicionales||[])[idx]; if(!a) return;
+    UI.confirm('Borrar adicional', `¿Seguro que querés borrar <b>${esc(a.nombre)}</b>?
+      Los productos que lo llevaban van a recalcular su costo sin él.`,
+      async ()=>{
+        Data.s.config.adicionales.splice(idx,1);
+        await Data.saveAdicionales();
+        Views.invalidar(); Router.refresh(); UI.toast('Adicional borrado','ok');
+      }, 'Sí, borrar');
+  },
+
+  /* ============================================================
      5 · RENTABILIDAD — ¿Qué familia necesita revisión?
      ============================================================ */
   rentabilidad(){

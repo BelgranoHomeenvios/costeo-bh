@@ -951,7 +951,7 @@ const Views = (() => {
   }
 
   return {
-    F, calcAll, invalidar, nPendientes, selCat, sinDatos,
+    F, calcAll, invalidar, nPendientes, selCat, sinDatos, sinPrefijoCat:sinPrefijoCategoria,
     resumen, productos, ficha, guardarFicha, guardarObs, simFicha, irProductos, simulador,
     teclaCelda, guardarCelda,
     setProd(k,v){
@@ -970,6 +970,7 @@ const Views = (() => {
     sortProd(k){ if(F.prod.sort===k) F.prod.dir*=-1; else {F.prod.sort=k; F.prod.dir=-1;} Router.refresh(); },
     toggleProd(k){ F.prod[k] = !F.prod[k]; F.prod.page=0; Router.refresh(); },
     filtrarEstadoRojo(){ F.prod.estado = F.prod.estado==='rojo'?'':'rojo'; F.prod.page=0; Router.refresh(); },
+    setRent(cat){ F.rent.cat = cat||''; Router.refresh(); window.scrollTo(0,0); },
     abrirMenuCol(k){ F.prod.menuCol = F.prod.menuCol===k?'':k; F.prod.menuQ=''; Router.refresh(); },
     cerrarMenuCol(){ F.prod.menuCol=''; F.prod.menuQ=''; F.prod.page=0; Router.refresh(); },
     menuColBuscar(v){ F.prod.menuQ=v; Router.refresh();

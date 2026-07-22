@@ -262,6 +262,25 @@ select.inp{cursor:pointer;padding-right:26px;
 .acc-card.activa.gris{border-color:var(--gray);background:var(--gray-l)}
 .acc-card.activa.ok{border-color:var(--green);background:#F0FAF3}
 .acc-card.activa:not(.am):not(.rojo):not(.gris):not(.ok){border-color:var(--blue);background:var(--blue-l)}
+
+/* Ficha: bloque plegable "Ver más" */
+.vermas{margin-top:4px}
+.vermas>summary{
+  cursor:pointer;user-select:none;list-style:none;
+  display:flex;align-items:center;gap:8px;
+  padding:11px 15px;background:var(--card);border:1px solid var(--line);
+  border-radius:var(--r);font-size:12.5px;font-weight:600;color:var(--sec);
+}
+.vermas>summary::-webkit-details-marker{display:none}
+.vermas>summary:hover{background:var(--gray-l);border-color:#D4DDE9;color:var(--ink)}
+.vermas>summary::before{content:'▾';font-size:11px;transition:transform .15s;opacity:.7}
+.vermas[open]>summary::before{transform:rotate(180deg)}
+.vermas[open]>summary{margin-bottom:14px}
+
+/* Inputs chicos dentro de las tarjetas de datos editables */
+.kv-edit dd{padding:3px 0;display:flex;justify-content:flex-end}
+.inp-sm{padding:5px 8px;font-size:12px;width:100%;max-width:200px}
+select.inp-sm{max-width:200px}
 .tbl tbody td{padding:9px 12px;border-bottom:1px solid var(--line2);vertical-align:middle}
 .tbl tbody tr{transition:background .1s}
 .tbl tbody tr:hover{background:#FAFCFE}

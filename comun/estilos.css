@@ -635,3 +635,21 @@ input[type=range]{width:100%;accent-color:var(--blue)}
 .ms-wrap .colmenu{position:absolute;top:calc(100% + 4px);left:0;z-index:20;min-width:200px}
 .colmenu-item label,.colmenu-item input{cursor:pointer}
 .colmenu-item{display:flex;align-items:center;gap:8px}
+
+/* Árbol anidado de variantes en Productos */
+.arbol-nodo{border-top:1px solid var(--line)}
+.arbol-row{display:flex;align-items:center;gap:8px;padding:8px 10px;cursor:pointer;font-size:12.5px}
+.arbol-row:hover{background:var(--card)}
+.arbol-dim{font-size:10px;text-transform:uppercase;letter-spacing:.03em;color:var(--mut);font-weight:600}
+.arbol-hijo{}
+.arbol-hoja{width:100%;border-collapse:collapse;margin-left:14px;font-size:11.5px;background:var(--card);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.arbol-hoja td{padding:6px 10px;border-top:1px solid var(--line)}
+.arbol-hoja tr:first-child td{border-top:none}
+
+/* Nivel categoría en Productos */
+.prod-cat{border-bottom:1px solid var(--line)}
+.prod-cat.open{background:var(--bg)}
+.prod-catrow{display:flex;align-items:center;padding:12px 14px;cursor:pointer}
+.prod-catrow:hover{background:var(--card)}
+.prod-catbody{padding-bottom:6px}
+.prod-catbody .prod-grp{border-bottom:1px solid var(--line)}

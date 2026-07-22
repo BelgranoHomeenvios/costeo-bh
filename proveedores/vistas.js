@@ -557,25 +557,37 @@ const Views = (() => {
       </div>
 
       <div class="g2 mb">
-        <div class="card"><div class="card-head"><h3>Datos generales</h3></div>
-          <div class="card-body"><dl class="kv">
-            <dt>Categoría</dt><dd>${esc(cat.nombre||p.categoriaId)}</dd>
-            <dt>Modelo</dt><dd>${esc(p.modelo)}</dd>
-            <dt>Medida comercial</dt><dd>${esc(p.medida||'—')}</dd>
-            <dt>Medida de costeo</dt><dd>${esc(p.medidaCosteo||'—')}</dd>
-            <dt>Terminación</dt><dd>${esc(term)}</dd>
-            ${Object.entries(p.variantes||{}).map(([k,v])=>
-              `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}
-          </dl></div></div>
+        <div class="card"><div class="card-head"><h3>Datos generales</h3>
+          <div class="spacer"></div><span class="hint">editable</span></div>
+          <div class="card-body"><dl class="kv kv-edit">
+            <dt>Categoría</dt><dd>
+              <select class="inp inp-sm" id="fCat">
+                ${Data.s.categorias.map(cc=>`<option value="${esc(cc.id)}" ${cc.id===p.categoriaId?'selected':''}>${esc(cc.nombre)}</option>`).join('')}
+              </select></dd>
+            <dt>Modelo</dt><dd><input class="inp inp-sm" id="fModelo" value="${esc(p.modelo||'')}"></dd>
+            <dt>Medida comercial</dt><dd><input class="inp inp-sm" id="fMedida" value="${esc(p.medida||'')}"></dd>
+            <dt>Medida de costeo</dt><dd><input class="inp inp-sm" id="fMedidaCosteo" value="${esc(p.medidaCosteo||'')}"></dd>
+            <dt>Terminación</dt><dd>
+              <select class="inp inp-sm" id="fTier">
+                ${TIERS.map(tr=>`<option value="${esc(tr.key)}" ${tr.key===p.tier?'selected':''}>${esc(tr.label)}</option>`).join('')}
+              </select></dd>
+            ${Object.keys(p.variantes||{}).map((k,i)=>
+              `<dt>${esc(k)}</dt><dd><input class="inp inp-sm" data-varkey="${esc(k)}" id="fVar${i}" value="${esc((p.variantes||{})[k]||'')}"></dd>`).join('')}
+          </dl>
+          <div class="hint" style="margin-top:4px">Categoría, medida de costeo y terminación recalculan el costo desde la tabla — al guardar te pido confirmación.</div>
+          </div></div>
         <div class="card"><div class="card-head"><h3>Composición del costo</h3></div>
-          <div class="card-body"><dl class="kv">
+          <div class="card-body"><dl class="kv kv-edit">
             <dt>Costo base ${c.baseDeTabla?'(tabla)':'(manual)'}</dt><dd>${money(c.base)}</dd>
-            <dt>Adicionales %</dt><dd>${c.adicPct?pct1(c.adicPct):'—'}</dd>
-            <dt>Adicionales fijos</dt><dd>${c.adicFijo?money(c.adicFijo):'—'}</dd>
-            <dt>Ajuste manual</dt><dd>${p.ajusteManual?money(p.ajusteManual):'—'}</dd>
+            <dt>Adicionales % <span class="hint" style="font-weight:400">(por reglas)</span></dt><dd>${c.adicPct?pct1(c.adicPct):'—'}</dd>
+            <dt>Adicionales fijos <span class="hint" style="font-weight:400">(por reglas)</span></dt><dd>${c.adicFijo?money(c.adicFijo):'—'}</dd>
+            <dt>Adicional de este producto</dt><dd><input class="inp inp-sm" type="number" id="fAdicional" value="${p.adicional||''}" placeholder="0"></dd>
+            <dt>Ajuste manual</dt><dd><input class="inp inp-sm" type="number" id="fAjuste" value="${p.ajusteManual||''}" placeholder="0"></dd>
             <dt style="border-top:1px solid var(--line);padding-top:7px">Costo final</dt>
             <dd style="border-top:1px solid var(--line);padding-top:7px">${money(c.costoFinal)}</dd>
-          </dl></div></div>
+          </dl>
+          <div style="margin-top:10px"><button class="btn btn-blue btn-sm" onclick="Views.guardarFicha('${p.id}')">Guardar cambios de la ficha</button></div>
+          </div></div>
       </div>
 
       <div class="card mb"><div class="card-head"><h3>Rentabilidad y precio recomendado</h3>
@@ -614,40 +626,7 @@ const Views = (() => {
         </div>
       </div>
 
-      <div class="card mb"><div class="card-head"><h3>Simular este producto</h3>
-        <div class="spacer"></div><span class="hint">no modifica los datos reales</span></div>
-        <div class="card-body">
-          <div class="g2" style="gap:16px">
-            <div><label class="inp-lbl">Costo <b id="simCostoL">${money(c.costoFinal)}</b></label>
-              <input type="range" id="simCosto" min="-40" max="80" step="1" value="0"
-                oninput="Views.simFicha('${p.id}')"></div>
-            <div><label class="inp-lbl">Precio de lista <b id="simPrecioL">${money(c.lista)}</b></label>
-              <input type="range" id="simPrecio" min="-40" max="120" step="1" value="0"
-                oninput="Views.simFicha('${p.id}')"></div>
-          </div>
-          <div id="simOut" style="margin-top:16px"></div>
-        </div>
-      </div>
-
-      <div class="card mb"><div class="card-head"><h3>Observaciones</h3></div>
-        <div class="card-body">
-          <textarea class="inp" id="fObs" rows="3" style="width:100%;resize:vertical"
-            placeholder="Notas sobre este producto: acuerdos con el proveedor, por qué el precio es el que es, qué hay que revisar…">${esc(p.obs||'')}</textarea>
-          <div style="margin-top:9px"><button class="btn btn-sm" onclick="Views.guardarObs('${p.id}')">Guardar observación</button></div>
-        </div>
-      </div>
-
-      <div class="card mb"><div class="card-head"><h3>Historial de este producto</h3></div>
-        ${hist.length?`<div class="tbl-wrap"><table class="tbl"><thead><tr>
-          <th style="width:150px">Fecha / hora</th><th style="width:160px">Tipo</th><th>Cambio</th>
-        </tr></thead><tbody>${hist.map(e=>`<tr>
-          <td class="t-sec">${fecha(e.fecha)}</td>
-          <td><span class="badge b-blue"><span class="dot"></span>${esc(e.tipo)}</span></td>
-          <td class="t-sec">${esc(e.detalle)}</td></tr>`).join('')}</tbody></table></div>`
-        :`<div class="card-body"><div class="hint">Todavía no hubo cambios sobre este producto.</div></div>`}
-      </div>
-
-      ${similares.length?`<div class="card"><div class="card-head"><h3>Otras variantes de este modelo</h3></div>
+      ${similares.length?`<div class="card mb"><div class="card-head"><h3>Otras variantes de este modelo</h3></div>
         <div class="tbl-wrap"><table class="tbl"><thead><tr>
           <th>Variantes</th><th>Medida</th><th class="num">Costo</th>
           <th class="num">P. lista</th><th class="num">Markup</th><th>Estado</th>
@@ -659,7 +638,44 @@ const Views = (() => {
             <td class="num">${money(cc.lista)}</td>
             <td class="num strong">${mk(cc.markup)}</td>
             <td>${UI.badge(cc.estado)}</td>
-          </tr>`).join('')}</tbody></table></div></div>`:''}`;
+          </tr>`).join('')}</tbody></table></div></div>`:''}
+
+      <details class="vermas">
+        <summary>Ver más: simulador, observaciones e historial</summary>
+
+        <div class="card mb" style="margin-top:14px"><div class="card-head"><h3>Simular este producto</h3>
+          <div class="spacer"></div><span class="hint">no modifica los datos reales</span></div>
+          <div class="card-body">
+            <div class="g2" style="gap:16px">
+              <div><label class="inp-lbl">Costo <b id="simCostoL">${money(c.costoFinal)}</b></label>
+                <input type="range" id="simCosto" min="-40" max="80" step="1" value="0"
+                  oninput="Views.simFicha('${p.id}')"></div>
+              <div><label class="inp-lbl">Precio de lista <b id="simPrecioL">${money(c.lista)}</b></label>
+                <input type="range" id="simPrecio" min="-40" max="120" step="1" value="0"
+                  oninput="Views.simFicha('${p.id}')"></div>
+            </div>
+            <div id="simOut" style="margin-top:16px"></div>
+          </div>
+        </div>
+
+        <div class="card mb"><div class="card-head"><h3>Observaciones</h3></div>
+          <div class="card-body">
+            <textarea class="inp" id="fObs" rows="3" style="width:100%;resize:vertical"
+              placeholder="Notas sobre este producto: acuerdos con el proveedor, por qué el precio es el que es, qué hay que revisar…">${esc(p.obs||'')}</textarea>
+            <div style="margin-top:9px"><button class="btn btn-sm" onclick="Views.guardarObs('${p.id}')">Guardar observación</button></div>
+          </div>
+        </div>
+
+        <div class="card"><div class="card-head"><h3>Historial de este producto</h3></div>
+          ${hist.length?`<div class="tbl-wrap"><table class="tbl"><thead><tr>
+            <th style="width:150px">Fecha / hora</th><th style="width:160px">Tipo</th><th>Cambio</th>
+          </tr></thead><tbody>${hist.map(e=>`<tr>
+            <td class="t-sec">${fecha(e.fecha)}</td>
+            <td><span class="badge b-blue"><span class="dot"></span>${esc(e.tipo)}</span></td>
+            <td class="t-sec">${esc(e.detalle)}</td></tr>`).join('')}</tbody></table></div>`
+          :`<div class="card-body"><div class="hint">Todavía no hubo cambios sobre este producto.</div></div>`}
+        </div>
+      </details>`;
 
     UI.drawer(esc(p.modelo),
       `${esc(Data.catNombre(p.categoriaId))} · ${esc(p.medida||'')} · ${esc(variantesTxt(p))}`, html);
@@ -767,18 +783,71 @@ const Views = (() => {
 
   function guardarFicha(id){
     const p = Data.s.productos.find(x=>x.id===id); if(!p) return;
-    const nc = parseFloat(document.getElementById('fCosto').value)||0;
-    const np = parseFloat(document.getElementById('fPrecio').value)||0;
+    const val = gid => document.getElementById(gid);
+    const num = gid => { const el=val(gid); return el ? (parseFloat(el.value)||0) : null; };
+    const txt = gid => { const el=val(gid); return el ? el.value.trim() : null; };
+
+    // Reunir los valores nuevos de todos los inputs presentes (los que no están, quedan igual)
+    const nuevo = {
+      costoManual: num('fCosto') ?? (Number(p.costoManual)||0),
+      precioLista: num('fPrecio') ?? (Number(p.precioLista)||0),
+      categoriaId: txt('fCat') ?? p.categoriaId,
+      modelo: txt('fModelo') ?? p.modelo,
+      medida: txt('fMedida') ?? p.medida,
+      medidaCosteo: txt('fMedidaCosteo') ?? p.medidaCosteo,
+      tier: txt('fTier') ?? p.tier,
+      adicional: num('fAdicional') ?? (Number(p.adicional)||0),
+      ajusteManual: num('fAjuste') ?? (Number(p.ajusteManual)||0),
+      variantes: {...(p.variantes||{})}
+    };
+    document.querySelectorAll('[data-varkey]').forEach(el=>{ nuevo.variantes[el.dataset.varkey] = el.value.trim(); });
+
+    // ¿Qué cambió?
     const cambios = [];
-    if(nc !== (Number(p.costoManual)||0)){
-      cambios.push(`costo ${money(p.costoManual||0)} → ${money(nc)}`); p.costoManual = nc; }
-    if(np !== (Number(p.precioLista)||0)){
-      cambios.push(`precio ${money(p.precioLista||0)} → ${money(np)}`); p.precioLista = np; }
+    const antesCat = p.categoriaId, antesMc = p.medidaCosteo, antesTier = p.tier;
+    if(nuevo.categoriaId!==p.categoriaId) cambios.push(`categoría ${Data.catNombre(p.categoriaId)} → ${Data.catNombre(nuevo.categoriaId)}`);
+    if(nuevo.modelo!==p.modelo) cambios.push(`modelo "${p.modelo}" → "${nuevo.modelo}"`);
+    if(nuevo.medida!==(p.medida||'')) cambios.push(`medida ${p.medida||'—'} → ${nuevo.medida||'—'}`);
+    if(nuevo.medidaCosteo!==(p.medidaCosteo||'')) cambios.push(`medida de costeo ${p.medidaCosteo||'—'} → ${nuevo.medidaCosteo||'—'}`);
+    if(nuevo.tier!==p.tier) cambios.push(`terminación → ${(TIERS.find(t=>t.key===nuevo.tier)||{}).label||nuevo.tier}`);
+    if((Number(p.adicional)||0)!==nuevo.adicional) cambios.push(`adicional propio ${money(p.adicional||0)} → ${money(nuevo.adicional)}`);
+    if((Number(p.ajusteManual)||0)!==nuevo.ajusteManual) cambios.push(`ajuste manual ${money(p.ajusteManual||0)} → ${money(nuevo.ajusteManual)}`);
+    if((Number(p.costoManual)||0)!==nuevo.costoManual) cambios.push(`costo ${money(p.costoManual||0)} → ${money(nuevo.costoManual)}`);
+    if((Number(p.precioLista)||0)!==nuevo.precioLista) cambios.push(`precio ${money(p.precioLista||0)} → ${money(nuevo.precioLista)}`);
+    const varCambios = Object.keys(nuevo.variantes).filter(k=>String((p.variantes||{})[k]||'')!==String(nuevo.variantes[k]||''));
+    varCambios.forEach(k=>cambios.push(`${k}: ${nuevo.variantes[k]}`));
+
     if(!cambios.length){ UI.toast('No hubo cambios'); return; }
-    Data.saveProducto(p);
-    Data.log('Edición manual', `${p.modelo} ${p.medida||''}`, cambios.join(' · '), p.id);
-    invalidar(); UI.closeAll(); Router.refresh();
-    UI.toast('Producto actualizado', 'ok');
+
+    // Cambios que recalculan el costo desde la tabla → confirmar mostrando el impacto
+    const riesgoso = nuevo.categoriaId!==antesCat || nuevo.medidaCosteo!==(antesMc||'') || nuevo.tier!==antesTier;
+
+    const aplicar = () => {
+      Object.assign(p, {
+        categoriaId:nuevo.categoriaId, modelo:nuevo.modelo, medida:nuevo.medida,
+        medidaCosteo:nuevo.medidaCosteo, tier:nuevo.tier, adicional:nuevo.adicional,
+        ajusteManual:nuevo.ajusteManual, costoManual:nuevo.costoManual,
+        precioLista:nuevo.precioLista, variantes:nuevo.variantes
+      });
+      Data.saveProducto(p);
+      Data.log('Edición de ficha', `${p.modelo} ${p.medida||''}`, cambios.join(' · '), p.id);
+      invalidar(); UI.closeAll(); Router.refresh();
+      UI.toast('Producto actualizado', 'ok');
+    };
+
+    if(riesgoso){
+      const cOld = Calc.producto(p);
+      const cNew = Calc.producto({...p, categoriaId:nuevo.categoriaId, medidaCosteo:nuevo.medidaCosteo, tier:nuevo.tier, adicional:nuevo.adicional, ajusteManual:nuevo.ajusteManual, costoManual:nuevo.costoManual});
+      const aviso = cNew.costoFinal<=0
+        ? `<b style="color:var(--red)">Ojo: con estos datos el producto queda SIN costo</b> (no hay una fila en la tabla para esa combinación de categoría, medida de costeo y terminación).`
+        : `El costo pasa de <b>${money(cOld.costoFinal)}</b> a <b>${money(cNew.costoFinal)}</b>.`;
+      UI.confirm('Confirmar cambio que recalcula el costo',
+        `Estás cambiando datos que hacen que el costo se busque en otra parte de la tabla.<br><br>
+         ${aviso}<br><br>¿Confirmás?`,
+        aplicar, 'Sí, guardar');
+      return;
+    }
+    aplicar();
   }
 
   /* ============================================================

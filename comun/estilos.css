@@ -450,6 +450,7 @@ input[type=range]{width:100%;accent-color:var(--blue)}
   color:var(--sec);background:var(--blue-l);border:1px solid #CFE0FB;
   padding:4px 9px;border-radius:20px;font-weight:600;
 }
+.edit-hint svg{width:14px;height:14px;flex-shrink:0}
 
 /* ============================================================
    REGLA DE MARKUP — el elemento propio de esta herramienta.

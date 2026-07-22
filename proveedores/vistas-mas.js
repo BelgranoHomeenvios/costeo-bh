@@ -62,6 +62,13 @@ Object.assign(Views, {
           <div class="sub">La fuente de la que salen los costos. Editás acá y todos los muebles se recalculan.</div></div>
       </div>
 
+      ${(()=>{ const nv = Views.noVinculados();
+        return nv.length ? `<div class="warn-box mb" style="display:flex;justify-content:space-between;align-items:center;gap:14px">
+          <div><b>${nv.length} productos no están vinculados a la lista.</b>
+            Tienen un costo cargado a mano que no coincide con la tabla, así que <b>no se actualizan</b> cuando cambiás los precios. Conviene revisarlos.</div>
+          <button class="btn btn-sm" onclick="Views.irProductos({soloNoVinc:true})">Ver cuáles</button>
+        </div>` : '';
+      })()}
       <div class="card mb"><div class="card-body" style="padding:12px 16px">
         <div class="filters">
           <span class="hint" style="align-self:center">Categoría:</span>

@@ -167,11 +167,16 @@ Object.assign(Views, {
      LISTA DE COSTOS — tabla editable (fuente de los costos) + adicionales
      ============================================================ */
   listaCostos(){
-    const cat = Views.F.lista ? Views.F.lista.cat : '';
-    if(!Views.F.lista) Views.F.lista = {cat:''};
+    if(!Views.F.lista) Views.F.lista = {cat:'', tipo:'carp'};
+    const cat = Views.F.lista.cat || '';
+    const tipo = Views.F.lista.tipo || 'carp';
+    const esHierros = tipo === 'hierros';
+    if(esHierros) return Views.listaHierros();
+    // columnas según la lista activa
+    const COLS = TIERS;
+    const tierSet = new Set(COLS.map(c=>c.key));
 
-    const cb = Data.s.costosBase.filter(x=>!cat || x.categoriaId===cat);
-    // agrupar por categoría + medida
+    const cb = Data.s.costosBase.filter(x=>(!cat || x.categoriaId===cat) && tierSet.has(x.tier));
     const grupos = {};
     cb.forEach(x=>{
       const g = grupos[x.categoriaId] = grupos[x.categoriaId] || {};
@@ -186,7 +191,7 @@ Object.assign(Views, {
       return meds.map(m=>`<tr>
         ${!cat?`<td class="t-sec">${esc(Data.catNombre(cid))}</td>`:''}
         <td class="strong">${esc(m)}</td>
-        ${TIERS.map(t=>{
+        ${COLS.map(t=>{
           const v = grupos[cid][m][t.key];
           return `<td class="num"><input class="cell-inp celda-costo" inputmode="numeric"
             value="${v?Number(v).toLocaleString('es-AR'):''}" placeholder="—"
@@ -197,16 +202,14 @@ Object.assign(Views, {
       </tr>`).join('');
     }).join('');
 
-    const nombreCat = cat ? Data.catNombre(cat) : 'todas las categorías';
-
-    /* --- Adicionales --- */
+    /* --- Adicionales (solo en carpintería) --- */
     const adics = Data.s.config.adicionales || [];
     const adicHTML = adics.length ? adics.map((a,i)=>`
       <div class="adic-row">
         <div>
           <span class="adic-nom">${esc(a.nombre)}</span>
-          <span class="adic-mods">${a.categoriaId?esc(Data.catNombre(a.categoriaId))+' · ':''}${
-            (a.modelos||[]).length ? 'aplica a: '+(a.modelos||[]).map(esc).join(', ') : 'sin modelos asignados'}</span>
+          <span class="adic-mods">${a.tipo==='pct'?'porcentaje':'monto fijo'} · terminaciones por defecto: ${
+            (a.tiersDefault&&a.tiersDefault.length?a.tiersDefault:TIERS.map(t=>t.key)).map(k=>esc((TIERS.find(t=>t.key===k)||{}).label||k)).join(', ')}</span>
         </div>
         <div style="display:flex;align-items:center;gap:12px">
           <span class="adic-val">${a.tipo==='pct'?'+'+(Number(a.valor)||0)+'%':'+'+money(a.valor)}</span>
@@ -214,7 +217,9 @@ Object.assign(Views, {
           <button class="icon-btn" onclick="Views.borrarAdicional(${i})" title="Borrar">${Icon('close')}</button>
         </div>
       </div>`).join('')
-      : `<div class="hint" style="padding:10px 0">Todavía no cargaste adicionales. Con "+ nuevo adicional" agregás extras como ranurado, patas o hierros.</div>`;
+      : `<div class="hint" style="padding:10px 0">Todavía no cargaste adicionales. Con "+ nuevo adicional" agregás extras como ranurado o patas.</div>`;
+
+    const tabTxt = esHierros ? 'Hierros' : 'Carpintería';
 
     return `
       <div class="page-head">
@@ -224,22 +229,26 @@ Object.assign(Views, {
         <button class="btn" onclick="Views.imprimirLista()">${Icon('imp')} Imprimir / PDF</button>
       </div>
 
-      ${(()=>{ const nv = Views.noVinculados();
+      <div class="segmented mb">
+        <button class="seg ${!esHierros?'on':''}" onclick="Views.setListaTipo('carp')">Carpintería</button>
+        <button class="seg ${esHierros?'on':''}" onclick="Views.setListaTipo('hierros')">Hierros</button>
+      </div>
+
+      ${!esHierros ? (()=>{ const nv = Views.noVinculados();
         return nv.length ? `<div class="warn-box mb" style="display:flex;justify-content:space-between;align-items:center;gap:14px">
           <div><b>${nv.length} productos no están vinculados a la lista.</b>
             Tienen un costo cargado a mano que no coincide con la tabla, así que <b>no se actualizan</b> cuando cambiás los precios. Conviene revisarlos.</div>
           <button class="btn btn-sm" onclick="Views.irProductos({soloNoVinc:true})">Ver cuáles</button>
         </div>` : '';
-      })()}
-      ${(()=>{
-        const aum = (Data.s.config.aumentos||[]);
+      })() : ''}
+      ${!esHierros ? (()=>{
+        const aum = (Data.s.config.aumentos||[]).filter(a=>a.lista!=='hierros');
         if(!aum.length) return '';
-        // acumulado general y por terminación (compone los % en cadena)
         const acum = {}; TIERS.forEach(t=>acum[t.key]=1);
         let ultimo = {};
         aum.forEach(a=>{
           const keys = a.tier==='all' ? TIERS.map(t=>t.key) : [a.tier];
-          keys.forEach(k=>{ acum[k]*=(1+a.pct/100); ultimo[k]=a.pct; });
+          keys.forEach(k=>{ if(acum[k]==null)return; acum[k]*=(1+a.pct/100); ultimo[k]=a.pct; });
         });
         const prom = TIERS.reduce((s,t)=>s+acum[t.key],0)/TIERS.length;
         const anio = new Date().getFullYear();
@@ -260,23 +269,25 @@ Object.assign(Views, {
             </div>
           </div>
         </div></div>`;
-      })()}
+      })() : ''}
 
       <div class="card mb" style="border-color:var(--blue)"><div class="card-body" style="padding:12px 16px">
-        <div class="sec-lbl" style="margin-bottom:10px">Aplicar aumento</div>
+        <div class="sec-lbl" style="margin-bottom:10px">Aplicar aumento · ${tabTxt}</div>
         <div class="filters" style="align-items:flex-end">
           <div><label class="inp-lbl">Categoría</label>
             ${Views.selCat('aumCat', cat, '')}</div>
-          <div><label class="inp-lbl">Terminación</label>
+          ${esHierros ? '' : `<div><label class="inp-lbl">Terminación</label>
             <select class="inp" id="aumTier">
               <option value="all">Todas las terminaciones</option>
               ${TIERS.map(t=>`<option value="${t.key}">Solo ${esc(t.label)}</option>`).join('')}
-            </select></div>
+            </select></div>`}
           <div><label class="inp-lbl">%</label>
             <input class="inp" id="aumPct" type="number" step="0.1" placeholder="Ej: 8" style="width:80px"></div>
           <button class="btn btn-blue" onclick="Views.verImpactoAumento()">Ver impacto y aplicar</button>
         </div>
-        <div class="hint" style="margin-top:8px">Elegís categoría (o todas) y qué terminación aumentar (o todas). Te muestra el impacto antes de confirmar.</div>
+        <div class="hint" style="margin-top:8px">${esHierros
+          ? 'Aumenta la lista de hierros de la categoría elegida (o todas).'
+          : 'Elegís categoría (o todas) y qué terminación aumentar (o todas). Te muestra el impacto antes de confirmar.'}</div>
       </div></div>
 
       <div class="card mb"><div class="card-body" style="padding:12px 16px">
@@ -289,31 +300,222 @@ Object.assign(Views, {
       </div></div>
 
       <div class="card mb">
-        ${!hayFilas ? `<div class="card-body">${UI.empty('Sin filas en la tabla',
-          'Esta categoría no tiene costos cargados. Usá "Pegar desde Excel" para cargarlos.')}</div>`
+        ${!hayFilas ? `<div class="card-body">${UI.empty(esHierros?'Sin hierros cargados':'Sin filas en la tabla',
+          esHierros?'Esta categoría no tiene hierros. Elegí una categoría y usá "Pegar desde Excel".':'Esta categoría no tiene costos cargados. Usá "Pegar desde Excel" para cargarlos.')}</div>`
         : `<div class="tbl-wrap"><table class="tbl"><thead><tr>
           ${!cat?'<th>Categoría</th>':''}<th>Medida</th>
-          ${TIERS.map(t=>`<th class="num">${esc(t.label)}</th>`).join('')}
+          ${COLS.map(t=>`<th class="num">${esc(t.label)}</th>`).join('')}
         </tr></thead><tbody>${filasHTML}</tbody></table></div>`}
       </div>
 
-      <div class="card"><div class="card-head"><h3>Adicionales</h3>
+      ${esHierros ? '' : `<div class="card"><div class="card-head"><h3>Adicionales</h3>
         <div class="spacer"></div>
         <button class="btn btn-sm btn-blue" onclick="Views.editarAdicional(-1)">+ nuevo adicional</button></div>
         <div class="card-body">
-          <div class="hint" style="margin-bottom:8px">Extras que se suman al precio base, en los modelos que los llevan.</div>
+          <div class="hint" style="margin-bottom:8px">Extras porcentuales o fijos que se suman en los modelos que los llevan. El vínculo con cada modelo se hace en <b>Categorías › Ver modelos</b>.</div>
           ${adicHTML}
         </div>
+      </div>`}`;
+  },
+
+  setListaCat(cat){ Views.F.lista = {...Views.F.lista, cat:cat||''}; Router.refresh(); },
+  setListaTipo(tipo){ Views.F.lista = {...Views.F.lista, tipo}; Router.refresh(); },
+
+  /* ---------- LISTA ÚNICA DE HIERROS ---------- */
+  listaHierros(){
+    const st = Views.F.hierros = Views.F.hierros || {fCat:'', fAlto:'', q:'', form:null};
+    const hierros = Data.s.config.hierros || [];
+
+    // alturas disponibles para el filtro
+    const alturas = [...new Set(hierros.map(h=>Number(h.alto)).filter(Boolean))].sort((a,b)=>a-b);
+
+    // aplicar filtros
+    const q = (st.q||'').toLowerCase().replace(/\s/g,'');
+    const filtrados = hierros.filter(h=>{
+      if(st.fCat && !(h.categorias||[]).includes(st.fCat) && !(h.modelos||[]).length) return false;
+      if(st.fAlto && Number(h.alto)!==Number(st.fAlto)) return false;
+      if(q){
+        const txt = `${h.largo}x${h.alto}${h.prof?'x'+h.prof:''}`.toLowerCase();
+        if(!txt.includes(q)) return false;
+      }
+      return true;
+    }).sort((a,b)=> (Number(a.alto)-Number(b.alto)) || (Number(a.largo)-Number(b.largo)));
+
+    const chipsAplica = h => {
+      const cats = (h.categorias||[]).map(c=>`<span class="chip">${esc(Data.catNombre(c))}</span>`);
+      const mods = (h.modelos||[]).map(m=>`<span class="chip chip-mod">◆ ${esc(m)}</span>`);
+      const all = cats.concat(mods);
+      return all.length ? all.join(' ') : '<span class="t-mut">sin asignar</span>';
+    };
+
+    const filas = filtrados.length ? filtrados.map(h=>{
+      const i = hierros.indexOf(h);
+      return `<tr>
+        <td class="strong">${esc(h.largo)}</td>
+        <td>${esc(h.alto)}</td>
+        <td class="${h.prof?'':'t-mut'}">${h.prof?esc(h.prof):'—'}</td>
+        <td class="num strong">${money(h.precio)}</td>
+        <td>${chipsAplica(h)}</td>
+        <td class="num" style="white-space:nowrap">
+          <button class="icon-btn" onclick="Views.editarHierro(${i})" title="Editar">${Icon('edit')}</button>
+          <button class="icon-btn" onclick="Views.borrarHierro(${i})" title="Borrar">${Icon('close')}</button>
+        </td>
+      </tr>`;
+    }).join('') : `<tr><td colspan="6"><div class="hint" style="padding:14px">${
+      hierros.length ? 'Ningún hierro coincide con el filtro.' : 'Todavía no cargaste hierros. Usá "+ nuevo hierro" para empezar.'}</div></td></tr>`;
+
+    return `
+      <div class="page-head">
+        <div><h2>Lista de costos</h2>
+          <div class="sub">La fuente de la que salen los costos. Editás acá y todos los muebles se recalculan.</div></div>
+        <div class="spacer"></div>
+        <button class="btn" onclick="Views.imprimirLista()">${Icon('imp')} Imprimir / PDF</button>
+      </div>
+
+      <div class="segmented mb">
+        <button class="seg" onclick="Views.setListaTipo('carp')">Carpintería</button>
+        <button class="seg on" onclick="Views.setListaTipo('hierros')">Hierros</button>
+      </div>
+
+      <div class="card mb"><div class="card-body" style="padding:12px 16px">
+        <div class="filters">
+          <div><label class="inp-lbl">Categoría</label>
+            <select class="inp inp-sm" onchange="Views.setHierroFiltro('fCat',this.value)">
+              <option value="">Todas</option>
+              ${Data.s.categorias.map(c=>`<option value="${c.id}" ${st.fCat===c.id?'selected':''}>${esc(c.nombre)}</option>`).join('')}
+            </select></div>
+          <div><label class="inp-lbl">Altura</label>
+            <select class="inp inp-sm" onchange="Views.setHierroFiltro('fAlto',this.value)">
+              <option value="">Todas</option>
+              ${alturas.map(a=>`<option value="${a}" ${Number(st.fAlto)===a?'selected':''}>${a} cm</option>`).join('')}
+            </select></div>
+          <div style="flex:1"><label class="inp-lbl">Buscar medida</label>
+            <input class="inp inp-sm" style="max-width:none" placeholder="Ej: 100x20" value="${esc(st.q)}"
+              oninput="Views.setHierroFiltro('q',this.value)"></div>
+          <div style="align-self:flex-end">
+            <button class="btn btn-blue btn-sm" onclick="Views.editarHierro(-1)">+ nuevo hierro</button></div>
+        </div>
+      </div></div>
+
+      ${st.form!=null ? Views.formHierro() : ''}
+
+      <div class="card">
+        <div class="tbl-wrap"><table class="tbl"><thead><tr>
+          <th>Largo</th><th>Alto</th><th>Prof.</th><th class="num">Precio</th><th>Aplica a</th><th></th>
+        </tr></thead><tbody>${filas}</tbody></table></div>
       </div>`;
   },
 
-  setListaCat(cat){ Views.F.lista = {cat:cat||''}; Router.refresh(); },
+  setHierroFiltro(campo, val){
+    Views.F.hierros = {...Views.F.hierros, [campo]:val};
+    // el buscador no debe re-renderizar en cada tecla si pierde foco; refrescamos igual
+    Router.refresh();
+  },
+
+  formHierro(){
+    const st = Views.F.hierros;
+    const f = st.form || {largo:'', alto:'', prof:'', precio:'', categorias:[], modelos:[]};
+    const esNuevo = st.form && st.form.idx==null;
+    const catChips = (f.categorias||[]).map(c=>`<span class="chip">${esc(Data.catNombre(c))}
+      <span style="cursor:pointer" onclick="Views.formHierroQuita('cat','${c}')">✕</span></span>`).join(' ');
+    const modChips = (f.modelos||[]).map(m=>`<span class="chip chip-mod">◆ ${esc(m)}
+      <span style="cursor:pointer" onclick="Views.formHierroQuita('mod','${escJs(m)}')">✕</span></span>`).join(' ');
+    return `<div class="card mb" style="border-color:var(--blue)"><div class="card-body">
+      <div class="sec-lbl" style="margin-bottom:12px">${esNuevo?'Nuevo hierro':'Editar hierro'}</div>
+      <div class="filters" style="align-items:flex-end;margin-bottom:12px">
+        <div><label class="inp-lbl">Largo</label>
+          <input class="inp inp-sm" id="hLargo" type="number" style="width:80px" value="${f.largo||''}"></div>
+        <div style="align-self:center;padding-top:16px;color:var(--mut)">×</div>
+        <div><label class="inp-lbl">Alto</label>
+          <input class="inp inp-sm" id="hAlto" type="number" style="width:80px" value="${f.alto||''}"></div>
+        <div style="align-self:center;padding-top:16px;color:var(--mut)">×</div>
+        <div><label class="inp-lbl">Prof. (opcional)</label>
+          <input class="inp inp-sm" id="hProf" type="number" style="width:90px" value="${f.prof||''}"></div>
+        <div><label class="inp-lbl">Precio</label>
+          <input class="inp inp-sm" id="hPrecio" type="number" style="width:110px" value="${f.precio||''}"></div>
+      </div>
+      <div style="margin-bottom:10px">
+        <label class="inp-lbl">Aplica a (categorías o modelos) — opcional</label>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:4px">
+          ${catChips} ${modChips}
+          <select class="inp inp-sm" style="max-width:200px" onchange="Views.formHierroAgrega('cat',this.value);this.value=''">
+            <option value="">+ categoría…</option>
+            ${Data.s.categorias.filter(c=>!(f.categorias||[]).includes(c.id)).map(c=>`<option value="${c.id}">${esc(c.nombre)}</option>`).join('')}
+          </select>
+          <input class="inp inp-sm" style="max-width:180px" placeholder="+ modelo (texto)"
+            onkeydown="if(event.key==='Enter'){Views.formHierroAgrega('mod',this.value);this.value=''}">
+        </div>
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:8px">
+        <button class="btn btn-sm" onclick="Views.cerrarFormHierro()">Cancelar</button>
+        <button class="btn btn-blue btn-sm" onclick="Views.guardarHierro()">Guardar hierro</button>
+      </div>
+    </div></div>`;
+  },
+
+  editarHierro(idx){
+    const hierros = Data.s.config.hierros || [];
+    const h = idx>=0 ? {...hierros[idx], idx} : {largo:'',alto:'',prof:'',precio:'',categorias:[],modelos:[],idx:null};
+    Views.F.hierros = {...Views.F.hierros, form:h};
+    Router.refresh();
+  },
+  cerrarFormHierro(){ Views.F.hierros = {...Views.F.hierros, form:null}; Router.refresh(); },
+
+  // leer inputs actuales del form al vuelo (para no perder lo tipeado al agregar chips)
+  _leerFormHierro(){
+    const g = id => (document.getElementById(id)||{}).value;
+    const f = Views.F.hierros.form || {};
+    return {...f, largo:g('hLargo')??f.largo, alto:g('hAlto')??f.alto,
+      prof:g('hProf')??f.prof, precio:g('hPrecio')??f.precio};
+  },
+  formHierroAgrega(tipo, val){
+    if(!val) return;
+    const f = Views._leerFormHierro();
+    if(tipo==='cat'){ f.categorias=[...(f.categorias||[]), val]; }
+    else { const m=val.trim(); if(m) f.modelos=[...(f.modelos||[]), m]; }
+    Views.F.hierros = {...Views.F.hierros, form:f}; Router.refresh();
+  },
+  formHierroQuita(tipo, val){
+    const f = Views._leerFormHierro();
+    if(tipo==='cat') f.categorias=(f.categorias||[]).filter(c=>c!==val);
+    else f.modelos=(f.modelos||[]).filter(m=>m!==val);
+    Views.F.hierros = {...Views.F.hierros, form:f}; Router.refresh();
+  },
+
+  async guardarHierro(){
+    const f = Views._leerFormHierro();
+    const largo = parseNum(f.largo), alto = parseNum(f.alto);
+    const prof = f.prof ? parseNum(f.prof) : null;
+    const precio = parseNum(f.precio);
+    if(!largo || !alto){ UI.toast('Poné largo y alto','err'); return; }
+    if(!precio){ UI.toast('Poné el precio','err'); return; }
+    if(!Data.s.config.hierros) Data.s.config.hierros = [];
+    const rec = {id: f.idx!=null?(Data.s.config.hierros[f.idx].id||Date.now()):Date.now(),
+      largo, alto, prof, precio, categorias:f.categorias||[], modelos:f.modelos||[]};
+    if(f.idx!=null) Data.s.config.hierros[f.idx] = rec;
+    else Data.s.config.hierros.push(rec);
+    const ok = await Data.saveHierros();
+    if(ok){ Data.log('Hierro', `${largo}x${alto}${prof?'x'+prof:''}`, `${money(precio)} · ${(rec.categorias.length+rec.modelos.length)||'sin'} asignaciones`);
+      Views.invalidar(); Views.F.hierros = {...Views.F.hierros, form:null}; Router.refresh(); UI.toast('Hierro guardado','ok'); }
+  },
+
+  borrarHierro(idx){
+    const h = (Data.s.config.hierros||[])[idx]; if(!h) return;
+    UI.confirm('Borrar hierro', `¿Borrar el hierro <b>${esc(h.largo)}×${esc(h.alto)}${h.prof?'×'+esc(h.prof):''}</b>?
+      Los productos que lo sumaban van a recalcular su costo sin él.`,
+      async ()=>{
+        Data.s.config.hierros.splice(idx,1);
+        await Data.saveHierros();
+        Views.invalidar(); Router.refresh(); UI.toast('Hierro borrado','ok');
+      }, 'Sí, borrar');
+  },
 
   /** Abre una ventana lista para imprimir o guardar como PDF, con las 4
    *  terminaciones, encabezado y fecha. Respeta la categoría elegida. */
   imprimirLista(){
     const cat = Views.F.lista ? Views.F.lista.cat : '';
-    const cb = Data.s.costosBase.filter(x=>!cat || x.categoriaId===cat);
+    const carpTiers = new Set(TIERS.map(t=>t.key));
+    const cb = Data.s.costosBase.filter(x=>(!cat || x.categoriaId===cat) && carpTiers.has(x.tier));
     if(!cb.length){ UI.toast('No hay precios para imprimir','err'); return; }
 
     // agrupar cat -> medida -> tier
@@ -391,6 +593,7 @@ Object.assign(Views, {
   /** Modal para pegar una tabla desde Excel (TSV). */
   pegarExcel(){
     const cat = Views.F.lista ? Views.F.lista.cat : '';
+    const esHierros = (Views.F.lista&&Views.F.lista.tipo)==='hierros';
     if(!cat){
       UI.modal('Pegar desde Excel',
         `<div class="hint" style="margin-bottom:10px">Primero elegí una categoría arriba (no "Todas"),
@@ -398,17 +601,21 @@ Object.assign(Views, {
         `<button class="btn" onclick="UI.closeAll()">Entendido</button>`);
       return;
     }
-    UI.modal(`Pegar desde Excel · ${esc(Data.catNombre(cat))}`,
-      `<div class="hint" style="margin-bottom:10px">Copiá de tu Excel las columnas en este orden:
-        <b>Medida · Laqueado · Comb. blanco · Comb. paraíso · Paraíso</b> (una fila por medida) y pegalas acá.
+    const cols = esHierros ? '<b>Medida · Precio del hierro</b> (una fila por medida)'
+      : '<b>Medida · Laqueado · Comb. blanco · Comb. paraíso · Paraíso</b> (una fila por medida)';
+    const ph = esHierros ? '100\t90000&#10;120\t100000' : '120x40x30\t123710\t129270\t136770\t149460&#10;150x40x30\t...';
+    UI.modal(`Pegar desde Excel · ${esHierros?'Hierros · ':''}${esc(Data.catNombre(cat))}`,
+      `<div class="hint" style="margin-bottom:10px">Copiá de tu Excel las columnas en este orden: ${cols} y pegalas acá.
         Las que dejes vacías se ignoran.</div>
        <textarea id="pegarTA" class="inp" rows="10" style="width:100%;font-family:monospace;font-size:12px"
-         placeholder="120x40x30	123710	129270	136770	149460&#10;150x40x30	..."></textarea>`,
+         placeholder="${ph}"></textarea>`,
       `<button class="btn" onclick="UI.closeAll()">Cancelar</button>
        <button class="btn btn-blue" onclick="Views.procesarPegado('${cat}')">Cargar filas</button>`);
   },
 
   async procesarPegado(cat){
+    const esHierros = (Views.F.lista&&Views.F.lista.tipo)==='hierros';
+    const COLS = esHierros ? [{key:'hierro'}] : TIERS;
     const txt = (document.getElementById('pegarTA')||{}).value || '';
     const lineas = txt.split('\n').map(l=>l.trim()).filter(Boolean);
     const filas = [];
@@ -416,7 +623,7 @@ Object.assign(Views, {
       const cols = ln.split(/\t|;|,/).map(c=>c.trim());
       if(cols.length < 2) continue;
       const medida = cols[0].toLowerCase().replace(/\s/g,'').replace(/×/g,'x');
-      TIERS.forEach((t,i)=>{
+      COLS.forEach((t,i)=>{
         const raw = cols[i+1];
         if(raw==null || raw==='') return;
         const costo = parseNum(raw);
@@ -427,21 +634,28 @@ Object.assign(Views, {
     UI.closeAll();
     const res = await Data.importarCostos(filas, (h,t)=>UI.progreso&&UI.progreso(h,t));
     Views.invalidar(); Router.refresh();
-    UI.toast(`${filas.length} precios cargados en ${Data.catNombre(cat)}`,'ok');
+    UI.toast(`${filas.length} ${esHierros?'hierros':'precios'} cargados en ${Data.catNombre(cat)}`,'ok');
   },
 
   /** Lee el panel inline y muestra el impacto antes de aplicar. */
   verImpactoAumento(){
+    const esHierros = (Views.F.lista&&Views.F.lista.tipo)==='hierros';
     const cat = document.getElementById('aumCat').value || '';
-    const tier = document.getElementById('aumTier').value || 'all';
+    const tier = esHierros ? 'hierro' : (document.getElementById('aumTier').value || 'all');
     const pct = parseFloat(document.getElementById('aumPct').value);
     if(!pct || pct===0){ UI.toast('Poné un porcentaje','err'); return; }
     const factor = 1 + pct/100;
-    const afectadas = Data.s.costosBase.filter(x=>
-      (!cat || x.categoriaId===cat) && (tier==='all' || x.tier===tier));
+    const carpTiers = new Set(TIERS.map(t=>t.key));
+    const afectadas = Data.s.costosBase.filter(x=>{
+      if(cat && x.categoriaId!==cat) return false;
+      if(esHierros) return x.tier==='hierro';
+      // carpintería: excluir hierros
+      if(!carpTiers.has(x.tier)) return false;
+      return tier==='all' || x.tier===tier;
+    });
     if(!afectadas.length){ UI.toast('No hay precios para ese alcance','err'); return; }
     const alcCat = cat ? Data.catNombre(cat) : 'todas las categorías';
-    const alcTier = tier==='all' ? 'todas las terminaciones' : (TIERS.find(t=>t.key===tier)||{}).label;
+    const alcTier = esHierros ? 'hierros' : (tier==='all' ? 'todas las terminaciones' : (TIERS.find(t=>t.key===tier)||{}).label);
     UI.confirm('Confirmar aumento',
       `Vas a aumentar <b>${pct}%</b> · <b>${esc(alcCat)}</b> · <b>${esc(alcTier)}</b>.<br><br>
        Afecta <b>${afectadas.length}</b> precios. Ejemplo: ${money(100000)} pasa a ${money(Math.round(100000*factor))}.<br><br>
@@ -450,11 +664,11 @@ Object.assign(Views, {
         const filas = afectadas.map(x=>({categoriaId:x.categoriaId, medida:x.medida, tier:x.tier,
           costo:Math.round(x.costo*factor)}));
         await Data.importarCostos(filas);
-        // registrar el aumento (versionado con fecha)
         if(!Data.s.config.aumentos) Data.s.config.aumentos = [];
-        Data.s.config.aumentos.push({fecha:new Date().toISOString(), pct, categoriaId:cat||'', tier, n:filas.length});
-        await Data.saveAdicionales(); // persiste config
-        Data.log('Aumento', `${alcCat} · ${alcTier}`, `+${pct}% sobre ${filas.length} precios`);
+        Data.s.config.aumentos.push({fecha:new Date().toISOString(), pct, categoriaId:cat||'', tier,
+          lista:esHierros?'hierros':'carp', n:filas.length});
+        await Data.saveAdicionales();
+        Data.log('Aumento', `${esHierros?'Hierros · ':''}${alcCat} · ${alcTier}`, `+${pct}% sobre ${filas.length} precios`);
         Views.invalidar(); Router.refresh();
         UI.toast(`Aumento de ${pct}% aplicado`,'ok');
       }, 'Sí, aumentar');
@@ -732,7 +946,7 @@ Object.assign(Views, {
         <th class="num">Markup obj. (negro)</th><th class="num">Markup obj. (resto)</th><th></th>
       </tr></thead><tbody>${cats.map(c => {
         const nP = Data.s.productos.filter(p=>p.categoriaId===c.id).length;
-        const nCB = Data.s.costosBase.filter(x=>x.categoriaId===c.id).length;
+        const nCB = Data.s.costosBase.filter(x=>x.categoriaId===c.id && x.tier!=='hierro').length;
         return `<tr>
           <td class="strong">${esc(c.nombre)}</td>
           <td class="num">${nP.toLocaleString('es-AR')}</td>

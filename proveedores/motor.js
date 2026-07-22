@@ -15,7 +15,8 @@ const Data = (() => {
     umbralAmarillo:1.60,
     margenMinimo:0.45,       // margen mínimo aceptable
     umbralSospecha:3.5,      // markup por encima del cual el dato es sospechoso
-    redondeo:1000            // redondeo del precio sugerido
+    redondeo:1000,           // redondeo del precio sugerido
+    adicionales:[]           // extras por modelo: {id,nombre,tipo:'pct'|'fijo',valor,modelos:[],categoriaId?}
   };
 
   const s = {
@@ -107,6 +108,25 @@ const Data = (() => {
       if(error) UI.toast('No pude guardar la configuración: '+error.message,'err');
     },
 
+    /** Guarda la lista de adicionales (viven dentro de la configuración). */
+    async saveAdicionales(){
+      const {error} = await Supa.rent.from('config').upsert({id:1, valores:s.config});
+      if(error){ UI.toast('No pude guardar los adicionales: '+error.message,'err'); return false; }
+      return true;
+    },
+
+    /** Edita/crea una fila de la tabla de costos (una celda: categoría+medida+tier). */
+    async guardarCostoCelda(categoriaId, medida, tier, costo){
+      const fila = {categoria_id:categoriaId, medida, tier, costo:Number(costo)||0};
+      const {error} = await Supa.rent.from('costos_base')
+        .upsert(fila, {onConflict:'categoria_id,medida,tier'});
+      if(error){ UI.toast('No pude guardar el costo: '+error.message,'err'); return false; }
+      const k = x => `${x.categoriaId}|${x.medida}|${x.tier}`;
+      const nueva = {categoriaId, medida, tier, costo:Number(costo)||0};
+      s.costosBase = s.costosBase.filter(x=>k(x)!==k(nueva)).concat([nueva]);
+      return true;
+    },
+
     /** Registra un cambio. Queda con el email de quien lo hizo. */
     async log(tipo, objetivo, detalle, productId){
       const fila = {tipo, objetivo, detalle, product_id:productId||null,
@@ -180,17 +200,19 @@ const Calc = (() => {
   }
 
   /** Adicionales aplicables a un producto según su modelo. */
+  /** Adicionales que aplican a un producto. Un adicional tiene:
+   *  {id, nombre, tipo:'pct'|'fijo', valor, modelos:[...], categoriaId?}
+   *  y aplica si el nombre del modelo del producto contiene alguno de los
+   *  modelos listados (y, si tiene categoriaId, si coincide la categoría). */
   function adicionales(p){
     let pct = 0, fijo = 0;
     const modelo = (p.modelo||'').toLowerCase();
-    Data.s.modeloAdic.forEach(a => {
-      if(!a.match) return;
-      if(!modelo.includes(String(a.match).toLowerCase())) return;
+    (Data.s.config.adicionales||[]).forEach(a => {
+      if(a.categoriaId && a.categoriaId !== p.categoriaId) return;
+      const aplica = (a.modelos||[]).some(m => m && modelo.includes(String(m).toLowerCase()));
+      if(!aplica) return;
       if(a.tipo === 'pct') pct += (Number(a.valor)||0)/100;
-      else if(a.tipo === 'fijoMedida'){
-        const v = (a.porMedida||{})[p.medidaCosteo] ?? (a.porMedida||{})[p.medida];
-        fijo += Number(v)||0;
-      } else fijo += Number(a.valor)||0;
+      else fijo += Number(a.valor)||0;
     });
     return {pct, fijo};
   }

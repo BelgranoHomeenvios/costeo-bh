@@ -354,57 +354,58 @@ const Views = (() => {
     return rows;
   }
 
-  /** Dimensiones de anidado para un modelo: primero la medida, después sus
-   *  claves de variante en orden (Estructura primero, si existe). */
-  function dimsDe(items){
+  /** Claves de variante de un modelo, en orden (Estructura primero si existe). */
+  function clavesVar(items){
     const claves = [];
     items.forEach(({p})=>Object.keys(p.variantes||{}).forEach(k=>{ if(!claves.includes(k)) claves.push(k); }));
-    // Estructura primero, resto en el orden en que aparecieron
     claves.sort((a,b)=>(a==='Estructura'?-1:0)-(b==='Estructura'?-1:0));
-    return ['__medida', ...claves];
+    return claves;
   }
 
-  /** Render recursivo del árbol: cada nivel agrupa por la dimensión actual y
-   *  se expande hasta llegar a las filas finales (variantes concretas). */
-  function nodoArbol(items, dims, depth, pathBase, expM, cfg){
-    // Nivel hoja: ya no quedan dimensiones para agrupar → mostrar filas
-    if(depth >= dims.length){
-      return `<table class="tbl arbol-hoja"><tbody>${items.map(({p,c})=>`
-        <tr class="clickable" onclick="Views.ficha('${p.id}')">
-          <td style="width:34%">${(TIERS.find(t=>t.key===p.tier)||{}).label ? `<span class="t-sec">${esc((TIERS.find(t=>t.key===p.tier)||{}).label)}</span>` : '<span class="t-mut">—</span>'}</td>
-          <td class="num">${c.tieneCosto?money(c.costoFinal):'<span class="t-mut">sin costo</span>'}</td>
-          <td class="num">${c.lista?money(c.efectivo):'<span class="t-mut">sin precio</span>'}</td>
-          <td class="num ${c.tieneCosto&&c.margen<cfg.margenMinimo?'t-red':''}">${c.tieneCosto?pct1(c.margen):'—'}</td>
-          <td class="num strong">${c.tieneCosto?mk(c.markup):'—'}</td>
-          <td class="num ${c.aumentoPct>0.001?'t-red strong':'t-mut'}">${c.aumentoPct>0.001?pctS(c.aumentoPct):'—'}</td>
-          <td class="num"><button class="icon-btn" title="Abrir ficha">${Icon('edit')}</button></td>
-        </tr>`).join('')}</tbody></table>`;
-    }
-    const dim = dims[depth];
-    // agrupar por el valor de la dimensión actual
-    const grupos = {};
-    items.forEach(it=>{
-      const val = dim==='__medida' ? (it.p.medida||'—') : String((it.p.variantes||{})[dim]||'—');
-      (grupos[val] = grupos[val] || []).push(it);
-    });
-    const claves = Object.keys(grupos).sort((a,b)=> dim==='__medida' ? medSort(a)-medSort(b) : a.localeCompare(b));
-    const etiqueta = dim==='__medida' ? 'Medida' : dim;
+  /** Árbol: Modelo → Medida → (al abrir la medida) todas las variantes como
+   *  filas, con una columna por cada clave de variante (Estructura, Frente…). */
+  function nodoArbol(items, modeloKey, expM, cfg){
+    const claves = clavesVar(items);
+    // agrupar por medida
+    const porMed = {};
+    items.forEach(it=>{ const m = it.p.medida||'—'; (porMed[m]=porMed[m]||[]).push(it); });
+    const medidas = Object.keys(porMed).sort((a,b)=>medSort(a)-medSort(b));
 
-    return claves.map(val=>{
-      const sub = grupos[val];
-      const path = pathBase+'|'+depth+'·'+val;
+    return medidas.map(med=>{
+      const sub = porMed[med];
+      const path = modeloKey+'|med·'+med;
       const abierto = !!expM[path];
-      // costo desde y estado del subgrupo, para dar contexto
       const cost = sub.filter(x=>x.c.tieneCosto).map(x=>x.c.costoFinal);
       const desde = cost.length?Math.min(...cost):0;
-      return `<div class="arbol-nodo" style="margin-left:${depth*14}px">
+      // ordenar variantes por las claves (estructura, luego frente…)
+      const ordenadas = sub.slice().sort((a,b)=>{
+        for(const k of claves){
+          const d = String((a.p.variantes||{})[k]||'').localeCompare(String((b.p.variantes||{})[k]||''));
+          if(d) return d;
+        }
+        return 0;
+      });
+      return `<div class="arbol-nodo" style="margin-left:14px">
         <div class="arbol-row" onclick="Views.toggleProdModelo('${escJs(path)}')">
           <span class="chev">${abierto?'▾':'▸'}</span>
-          <span class="arbol-dim">${esc(etiqueta)}</span>
-          <b>${esc(val)}</b>
+          <span class="arbol-dim">Medida</span>
+          <b>${esc(med)}</b>
           <span class="t-mut" style="font-size:11px">· ${sub.length} ${sub.length===1?'variante':'variantes'}${desde?` · desde ${money(desde)}`:''}</span>
         </div>
-        ${abierto?`<div class="arbol-hijo">${nodoArbol(sub, dims, depth+1, path, expM, cfg)}</div>`:''}
+        ${abierto?`<div class="arbol-hijo"><table class="tbl arbol-hoja"><thead><tr>
+          ${claves.map(k=>`<th>${esc(k)}</th>`).join('')}
+          <th class="num">Costo</th><th class="num">P. efectivo</th><th class="num">Margen</th>
+          <th class="num">Markup</th><th class="num">Aum.</th><th></th>
+        </tr></thead><tbody>${ordenadas.map(({p,c})=>`
+          <tr class="clickable" onclick="Views.ficha('${p.id}')">
+            ${claves.map(k=>`<td class="t-sec">${esc((p.variantes||{})[k]||'—')}</td>`).join('')}
+            <td class="num">${c.tieneCosto?money(c.costoFinal):'<span class="t-mut">sin costo</span>'}</td>
+            <td class="num">${c.lista?money(c.efectivo):'<span class="t-mut">sin precio</span>'}</td>
+            <td class="num ${c.tieneCosto&&c.margen<cfg.margenMinimo?'t-red':''}">${c.tieneCosto?pct1(c.margen):'—'}</td>
+            <td class="num strong">${c.tieneCosto?mk(c.markup):'—'}</td>
+            <td class="num ${c.aumentoPct>0.001?'t-red strong':'t-mut'}">${c.aumentoPct>0.001?pctS(c.aumentoPct):'—'}</td>
+            <td class="num"><button class="icon-btn" title="Abrir ficha">${Icon('edit')}</button></td>
+          </tr>`).join('')}</tbody></table></div>`:''}
       </div>`;
     }).join('');
   }
@@ -477,7 +478,7 @@ const Views = (() => {
           <span style="flex:1;text-align:right">${gr.margenProm?pct1(gr.margenProm):'<span class="t-mut">—</span>'}</span>
           <span style="flex:1.3;text-align:right">${badgeEstado(gr.estado)}</span>
         </div>
-        ${abierto?`<div class="prod-detalle">${nodoArbol(gr.items, dimsDe(gr.items), 0, gr.k, f.expM||{}, cfg)}</div>`:''}
+        ${abierto?`<div class="prod-detalle">${nodoArbol(gr.items, gr.k, f.expM||{}, cfg)}</div>`:''}
       </div>`;
     };
 

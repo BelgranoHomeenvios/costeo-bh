@@ -9,9 +9,10 @@ Object.assign(Views, {
   rentabilidad(){
     if(!Data.s.productos.length) return Views.sinDatos();
     const cfg = Data.s.config;
+    const catFoco = Views.F.rent.cat || '';
     const rows = Views.calcAll();
-    const conCosto = rows.filter(r=>r.c.tieneCosto);
 
+    // Ranking de categorías: SIEMPRE todas (es el índice)
     const porCat = {};
     rows.forEach(({p,c}) => {
       const o = porCat[p.categoriaId] = porCat[p.categoriaId] ||
@@ -22,26 +23,31 @@ Object.assign(Views, {
     });
     const cats = Object.entries(porCat).map(([id,o])=>({
       id, nombre:Data.catNombre(id), ...o,
-      mgProm:o.cn?o.mg/o.cn:0, mkpProm:o.cn?o.mkp/o.cn:0, cob:o.n?o.cn/o.n:0
+      mgProm:o.cn?o.mg/o.cn:0, mkpProm:o.cn?o.mkp/o.cn:0,
+      ganProm:o.cn?o.gan/o.cn:0, cob:o.n?o.cn/o.n:0
     })).sort((a,b)=>a.mkpProm-b.mkpProm);
 
-    const top = [...conCosto].sort((a,b)=>b.c.ganancia-a.c.ganancia).slice(0,10);
-    const bot = [...conCosto].sort((a,b)=>a.c.ganancia-b.c.ganancia).slice(0,10);
-    const sub = [...conCosto].filter(r=>r.c.aumentoPct>0.001)
+    // Mayor/menor utilidad y aumento: respetan el foco de categoría
+    const enFoco = rows.filter(({p,c}) => c.tieneCosto && (!catFoco || p.categoriaId===catFoco));
+    const top = [...enFoco].sort((a,b)=>b.c.ganancia-a.c.ganancia).slice(0,10);
+    const bot = [...enFoco].sort((a,b)=>a.c.ganancia-b.c.ganancia).slice(0,10);
+    const sub = [...enFoco].filter(r=>r.c.aumentoPct>0.001)
       .sort((a,b)=>b.c.aumentoPct-a.c.aumentoPct).slice(0,10);
+    const nombreFoco = catFoco ? Data.catNombre(catFoco) : 'todas las categorías';
 
     const mini = (titulo, lista, campo, fmt, cls, nota) => `
       <div class="card"><div class="card-head"><h3>${titulo}</h3>
         <div class="spacer"></div><span class="hint">${nota||''}</span></div>
-        <div class="tbl-wrap"><table class="tbl"><thead><tr>
-          <th>Modelo</th><th>Categoría</th><th class="num">${campo==='ganancia'?'Ganancia':'Aumento'}</th>
+        ${lista.length?`<div class="tbl-wrap"><table class="tbl"><thead><tr>
+          <th>Modelo</th>${catFoco?'':'<th>Categoría</th>'}<th class="num">${campo==='ganancia'?'Ganancia/unidad':'Aumento'}</th>
           <th class="num">Markup</th></tr></thead>
         <tbody>${lista.map(({p,c})=>`<tr class="clickable" onclick="Views.ficha('${p.id}')">
-          <td class="strong">${esc(p.modelo)}<div class="hint">${esc(p.medida||'')}</div></td>
-          <td class="t-sec">${esc(Data.catNombre(p.categoriaId))}</td>
+          <td class="strong">${esc(Views.sinPrefijoCat?Views.sinPrefijoCat(p.modelo,Data.catNombre(p.categoriaId)):p.modelo)}<div class="hint">${esc(p.medida||'')}</div></td>
+          ${catFoco?'':`<td class="t-sec">${esc(Data.catNombre(p.categoriaId))}</td>`}
           <td class="num strong ${cls}">${fmt(c[campo])}</td>
           <td class="num">${mk(c.markup)}</td></tr>`).join('')}
-        </tbody></table></div></div>`;
+        </tbody></table></div>`
+        :`<div class="card-body"><div class="hint">No hay productos con costo en ${esc(nombreFoco)}.</div></div>`}</div>`;
 
     return `
       <div class="page-head">
@@ -49,31 +55,39 @@ Object.assign(Views, {
           <div class="sub">Dónde está la utilidad y qué familia necesita revisión</div></div>
       </div>
 
+      <div class="card mb"><div class="card-body" style="padding:12px 16px">
+        <div class="filters">
+          <span class="hint" style="align-self:center">Enfocar en:</span>
+          ${Views.selCat('rentCat', catFoco, 'onchange="Views.setRent(this.value)"')}
+          ${catFoco?`<button class="btn btn-sm btn-ghost" onclick="Views.setRent('')">Ver todas</button>`:''}
+        </div>
+      </div>
+
       <div class="card mb"><div class="card-head"><h3>Ranking de categorías</h3>
-        <div class="spacer"></div><span class="hint">ordenado por markup promedio (peor primero)</span></div>
+        <div class="spacer"></div><span class="hint">peor markup primero · tocá una para enfocar</span></div>
         <div class="tbl-wrap"><table class="tbl"><thead><tr>
-          <th>Categoría</th><th class="num">Productos</th><th class="num">Cobertura</th>
+          <th>Categoría</th><th class="num">Productos</th><th class="num">Costeado real</th>
           <th class="num">Markup prom.</th><th class="num">Margen prom.</th>
-          <th class="num">Ganancia total</th><th class="num">Bajo objetivo</th><th class="num">En rojo</th>
+          <th class="num">Ganancia prom./unidad</th><th class="num">En rojo</th>
         </tr></thead><tbody>${cats.map(r=>`
-          <tr class="clickable" onclick="Views.irProductos({cat:'${r.id}'})">
+          <tr class="clickable ${r.id===catFoco?'sel-row':''}" onclick="Views.setRent('${r.id}')">
             <td class="strong">${esc(r.nombre)}</td>
             <td class="num">${r.n.toLocaleString('es-AR')}</td>
             <td class="num"><div style="display:flex;align-items:center;gap:7px;justify-content:flex-end">
               <span class="${r.cob<0.5?'t-red':r.cob<0.9?'t-amber':'t-green'}">${(r.cob*100).toFixed(0)}%</span>
               ${UI.pbar(r.cob, r.cob<0.5?'var(--red)':r.cob<0.9?'var(--amber)':'var(--green)')}</div></td>
-            <td class="num strong ${r.mkpProm<cfg.umbralAmarillo?'t-red':r.mkpProm<cfg.umbralVerde?'t-amber':'t-green'}">${mk(r.mkpProm)}</td>
-            <td class="num ${r.mgProm<cfg.margenMinimo?'t-red':''}">${pct1(r.mgProm)}</td>
-            <td class="num">${money(r.gan)}</td>
-            <td class="num">${r.aum||'<span class="t-mut">—</span>'}</td>
-            <td class="num">${r.rojo?`<span class="badge b-red"><span class="dot"></span>${r.rojo}</span>`:'<span class="t-mut">—</span>'}</td>
+            <td class="num strong ${r.mkpProm<cfg.umbralAmarillo?'t-red':r.mkpProm<cfg.umbralVerde?'t-amber':'t-green'}">${r.cn?mk(r.mkpProm):'<span class="t-mut">sin costo</span>'}</td>
+            <td class="num ${r.mgProm<cfg.margenMinimo?'t-red':''}">${r.cn?pct1(r.mgProm):'<span class="t-mut">—</span>'}</td>
+            <td class="num">${r.cn?money(r.ganProm):'<span class="t-mut">—</span>'}</td>
+            <td class="num">${r.rojo?`<span class="badge b-red clickable" onclick="event.stopPropagation();Views.irProductos({cat:'${r.id}',estado:'rojo'})"><span class="dot"></span>${r.rojo}</span>`:'<span class="t-mut">—</span>'}</td>
           </tr>`).join('')}</tbody></table></div></div>
 
+      <div class="hint" style="margin-bottom:8px">Detalle de productos — ${esc(nombreFoco)}</div>
       <div class="g2 mb">
-        ${mini('Mayor utilidad por unidad', top, 'ganancia', money, 't-green', 'top 10')}
-        ${mini('Menor utilidad por unidad', bot, 'ganancia', money, 't-red', 'top 10')}
+        ${mini(catFoco?'Las que más convienen':'Que más convienen', top, 'ganancia', money, 't-green', 'top 10 · por ganancia/unidad')}
+        ${mini(catFoco?'Las que menos convienen':'Que menos convienen', bot, 'ganancia', money, 't-red', 'top 10 · por ganancia/unidad')}
       </div>
-      ${mini('Los que más necesitan aumento', sub, 'aumentoPct', pctS, 't-red', 'top 10 por % de aumento sugerido')}`;
+      ${mini(catFoco?`${esc(nombreFoco)}: necesitan aumento`:'Los que más necesitan aumento', sub, 'aumentoPct', pctS, 't-red', 'top 10 por % de aumento sugerido')}`;
   },
 
   /* ============================================================

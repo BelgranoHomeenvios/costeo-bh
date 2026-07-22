@@ -107,6 +107,34 @@ Object.assign(Views, {
       </div>`;
     }).join('');
 
+    // Pendientes de esta categoría (de Tienda Nube, sin costear todavía)
+    const modelosCosteados = new Set(modelos.map(m=>m.toUpperCase()));
+    const pend = (Data.s.sinCosto||[]).filter(p=>p.categoriaId===catId);
+    // detectar duplicados: pendientes cuyo nombre ya está costeado
+    const pendReales = [], pendDup = [];
+    pend.forEach(p=>{ (modelosCosteados.has((p.modelo||'').toUpperCase()) ? pendDup : pendReales).push(p); });
+
+    const filasPend = pendReales.length ? `
+      <div style="padding:8px 15px;background:var(--amber-l);font-size:11px;font-weight:700;color:var(--amber);border-top:1px solid var(--line)">
+        FALTA COSTEAR — están en Tienda Nube pero no tienen costo asignado</div>
+      ${pendReales.map(p=>`<div style="border-top:1px solid var(--line);background:var(--amber-l)">
+        <div class="modelo-row">
+          <div style="display:flex;align-items:center;gap:10px">
+            <span class="chev"></span>
+            <b style="font-size:13px">${esc(Views.sinPrefijoCat?Views.sinPrefijoCat(p.modelo, cat.nombre||catId):p.modelo)}</b>
+            <span class="hint">en Tienda Nube${p.precioLista?` · vende a ${money(p.precioLista)}`:''}</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <span class="t-amber" style="font-size:12px">● Falta costear</span>
+            <button class="btn btn-sm btn-blue" onclick="Views.completarPendiente('${escJs(p.modelo)}')">Completar</button>
+          </div>
+        </div>
+      </div>`).join('')}` : '';
+
+    const avisoDup = pendDup.length ? `<div class="warn-box mb">
+      <b>${pendDup.length} posibles duplicados.</b> Estos modelos figuran como pendientes pero ya tienen productos costeados con el mismo nombre: ${
+        pendDup.map(p=>esc(p.modelo)).join(', ')}. Revisá si son el mismo (conviene borrar el pendiente).</div>` : '';
+
     return `
       <div class="page-head">
         <div>
@@ -117,14 +145,24 @@ Object.assign(Views, {
         </div>
       </div>
 
+      ${avisoDup}
+
       <div class="filters mb">
-        <div class="card" style="padding:10px 14px"><div class="hint">Modelos</div><div style="font-size:18px;font-weight:700">${modelos.length}</div></div>
-        <div class="card" style="padding:10px 14px"><div class="hint">Derivan de la lista</div><div style="font-size:18px;font-weight:700;color:var(--green)">${nLista}</div></div>
+        <div class="card" style="padding:10px 14px"><div class="hint">Modelos</div><div style="font-size:18px;font-weight:700">${modelos.length+pendReales.length}</div></div>
+        <div class="card" style="padding:10px 14px"><div class="hint">Costeados</div><div style="font-size:18px;font-weight:700;color:var(--green)">${modelos.length}</div></div>
+        ${pendReales.length?`<div class="card" style="padding:10px 14px;border-color:var(--amber);background:var(--amber-l)"><div class="hint">Falta costear</div><div style="font-size:18px;font-weight:700;color:var(--amber)">${pendReales.length}</div></div>`:''}
         <div class="card" style="padding:10px 14px"><div class="hint">Con adicional</div><div style="font-size:18px;font-weight:700;color:var(--amber)">${nAdic}</div></div>
-        <div class="card" style="padding:10px 14px"><div class="hint">Precio propio</div><div style="font-size:18px;font-weight:700">${nPropio}</div></div>
       </div>
 
-      <div class="card">${filas || '<div class="card-body"><div class="hint">Esta categoría no tiene productos cargados.</div></div>'}</div>`;
+      <div class="card">${(filas||'') + filasPend || '<div class="card-body"><div class="hint">Esta categoría no tiene productos cargados.</div></div>'}</div>`;
+  },
+
+  completarPendiente(modelo){
+    UI.modal(`Completar: ${esc(modelo)}`,
+      `<div class="hint" style="line-height:1.6">Para costear este modelo necesitás cargar sus productos (medidas × terminaciones) con costo.
+        Por ahora esto se hace desde <b>Importar / Exportar → Catálogo costeado</b>, subiendo el modelo con sus datos.
+        <br><br>Próximamente vas a poder completarlo directo acá.</div>`,
+      `<button class="btn" onclick="UI.closeAll()">Entendido</button>`);
   },
 
   toggleModeloExp(m){ const st=Views.F.modelos; st.expandido=st.expandido||{}; st.expandido[m]=!st.expandido[m]; Router.refresh(); },

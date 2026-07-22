@@ -9,6 +9,7 @@ const Icon = (() => {
     sim:'M12 3v3m0 12v3M5.6 5.6l2.1 2.1m8.6 8.6l2.1 2.1M3 12h3m12 0h3M5.6 18.4l2.1-2.1m8.6-8.6l2.1-2.1M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z',
     refresh:'M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6',
     tag:'M3 12V5a2 2 0 0 1 2-2h7l9 9-9 9-9-9zM7.5 7.5h.01',
+    edit:'M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7M18.5 2.5a2.1 2.1 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z',
     clock:'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2',
     hist:'M3 12a9 9 0 1 0 3-6.7L3 8m0-5v5h5M12 7v5l4 2',
     gear:'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-2.8-1.1l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.6 1.6 0 0 0 3 15H3a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.1-2.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.6 1.6 0 0 0 9 4.6V4a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 2.8 1.1l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0 1.1 2.8H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z',
@@ -247,6 +248,7 @@ const Router = (() => {
        {id:'rentabilidad', label:'Análisis de rentabilidad',icon:'chart'},
        {id:'simulador',    label:'Simulador de precios',    icon:'sim'},
        {id:'costos',       label:'Actualización de costos', icon:'refresh'},
+       {id:'listaCostos',  label:'Lista de costos',         icon:'tag'},
        {id:'categorias',   label:'Categorías y reglas',     icon:'tag'},
        {id:'pendientes',   label:'Pendientes',              icon:'clock', badge:()=>(typeof Views!=='undefined'?Views.nPendientes():0)},
        {id:'historial',    label:'Historial',               icon:'hist'},
@@ -273,10 +275,6 @@ const Router = (() => {
     const pills = document.getElementById('bhPills');
     if(pills) pills.innerHTML = enPortada ? '' : MODULOS.map(m =>
       `<button class="bh-pill ${m.id===mod.id?'on':''}" onclick="Router.abrirModulo('${m.id}')">${m.pill}</button>`).join('');
-
-    /* En la entrada no hay módulo que configurar */
-    const btnCfg = document.getElementById('btnConfig');
-    if(btnCfg) btnCfg.style.display = enPortada ? 'none' : '';
 
     /* --- Usuario --- */
     const mail = (Supa.usuario||{}).email || '';

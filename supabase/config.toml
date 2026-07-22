@@ -1,0 +1,9 @@
+# Config de Supabase para deploys por CLI.
+# El proyecto real es bbxyoojlfcaxbkdsqlyg (se linkea con `supabase link`).
+project_id = "costeo-bh"
+
+# La función se invoca desde el navegador (github.io) con el JWT del usuario.
+# verify_jwt = false deja pasar el preflight OPTIONS de CORS (que va sin token);
+# la seguridad de datos la dan las RLS del esquema rentabilidad.
+[functions.sync-precios]
+verify_jwt = false

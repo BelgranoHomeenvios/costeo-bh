@@ -6,7 +6,7 @@ const Views = (() => {
   /* filtros persistentes entre navegaciones */
   const F = {
     prod:{cat:'', modelo:'', estado:'', medida:'', term:'', vars:{}, q:'',
-          soloAumentar:false, incompletos:false, revisar:false, sinCosto:false, hoy:false,
+          soloAumentar:false, incompletos:false, revisar:false, sinCosto:false, hoy:false, soloNoVinc:false,
           menuCol:'', menuQ:'',
           sort:'aumentoPct', dir:-1, page:0, per:50},
     rent:{cat:''},
@@ -110,6 +110,18 @@ const Views = (() => {
       if(h.productId && h.fecha && new Date(h.fecha).toDateString()===hoy) ids.add(h.productId);
     });
     return ids;
+  }
+
+  /** Productos "no vinculados": tienen costo manual que difiere del de la tabla
+   *  (o la tabla no tiene su combinación). Son los que hay que revisar porque
+   *  su costo no se actualiza cuando cambia la lista. */
+  function noVinculados(){
+    return Data.s.productos.filter(p=>{
+      const cm = Number(p.costoManual)||0;
+      if(cm<=0) return false;                       // deriva de tabla: OK
+      const t = Calc.costoTabla(p.categoriaId, p.medidaCosteo, p.tier);
+      return Math.abs(t - cm) >= 1;                 // manual != tabla → revisar
+    });
   }
 
   function nPendientes(){
@@ -325,6 +337,7 @@ const Views = (() => {
     if(f.sinCosto)     rows = rows.filter(({c})=>!c.tieneCosto);
     if(f.revisar)      rows = rows.filter(({c})=>c.tieneCosto && (c.markup>Data.s.config.umbralSospecha || c.ganancia<0));
     if(f.hoy){ const ids=idsHoy(); rows = rows.filter(({p})=>ids.has(p.id)); }
+    if(f.soloNoVinc){ const nv=new Set(noVinculados().map(p=>p.id)); rows = rows.filter(({p})=>nv.has(p.id)); }
     const k = f.sort;
     rows.sort((a,b)=>{
       if(k==='categoriaId') return f.dir * Data.catNombre(a.p.categoriaId).localeCompare(Data.catNombre(b.p.categoriaId));
@@ -541,7 +554,7 @@ const Views = (() => {
         costo en la tabla para su medida y terminación, así que no se puede calcular rentabilidad.
         Cargalo en <b>Actualización de costos</b> o en el Excel de pendientes.</div>`:''}
 
-      <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:15px">
+      <div class="kpi-grid" style="grid-template-columns:repeat(auto-fit,minmax(132px,1fr));margin-bottom:15px">
         ${UI.kpi({label:'Costo final', value:c.tieneCosto?money(c.costoFinal):'—',
           icon:'box', bg:'var(--gray-l)', color:'var(--sec)'})}
         ${UI.kpi({label:'Precio efectivo', value:money(c.efectivo),
@@ -951,7 +964,7 @@ const Views = (() => {
   }
 
   return {
-    F, calcAll, invalidar, nPendientes, selCat, sinDatos, sinPrefijoCat:sinPrefijoCategoria,
+    F, calcAll, invalidar, nPendientes, noVinculados, selCat, sinDatos, sinPrefijoCat:sinPrefijoCategoria,
     resumen, productos, ficha, guardarFicha, guardarObs, simFicha, irProductos, simulador,
     teclaCelda, guardarCelda,
     setProd(k,v){
@@ -976,7 +989,7 @@ const Views = (() => {
     menuColBuscar(v){ F.prod.menuQ=v; Router.refresh();
       const el=document.querySelector('.colmenu-q'); if(el){ el.focus(); el.setSelectionRange(el.value.length,el.value.length); } },
     limpiarProd(){ Object.assign(F.prod,{cat:'',modelo:'',estado:'',medida:'',term:'',vars:{},q:'',
-      soloAumentar:false,incompletos:false,revisar:false,sinCosto:false,hoy:false,menuCol:'',menuQ:'',page:0}); Router.refresh(); },
+      soloAumentar:false,incompletos:false,revisar:false,sinCosto:false,hoy:false,soloNoVinc:false,menuCol:'',menuQ:'',page:0}); Router.refresh(); },
     pag(d){ F.prod.page+=d; Router.refresh(); window.scrollTo(0,0); },
     irPag(n){ F.prod.page=Math.max(0,n); Router.refresh(); window.scrollTo(0,0); },
     setSim(k,v){ F.sim[k]=parseFloat(v); Router.refresh(); },

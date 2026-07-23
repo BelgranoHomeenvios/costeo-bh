@@ -145,9 +145,11 @@ const Views = (() => {
     // o el costo quedó desactualizado. En ambos casos el número no es confiable.
     const sospechosos = rows.filter(({c}) => c.tieneCosto && c.markup > cfg.umbralSospecha).length;
 
+    const totalModelos = new Set(Data.s.productos.map(p=>p.categoriaId+'::'+(p.modelo||''))).size;
+
     const kpis = [
-      UI.kpi({label:'Total productos', value:t.total.toLocaleString('es-AR'),
-        sub:'Ver detalle', subColor:'var(--blue)', icon:'box', bg:'var(--blue-l)', color:'var(--blue)',
+      UI.kpi({label:'Productos', value:totalModelos.toLocaleString('es-AR'),
+        sub:`${t.total.toLocaleString('es-AR')} variantes`, subColor:'var(--blue)', icon:'box', bg:'var(--blue-l)', color:'var(--blue)',
         onClick:"Views.irProductos({cat:'',estado:'',soloAumentar:false})"}),
       UI.kpi({label:'Costeados', value:t.costeados.toLocaleString('es-AR'),
         sub:`${(t.costeados/t.total*100).toFixed(1).replace('.',',')}% del total`, subColor:'var(--green)',
@@ -188,25 +190,26 @@ const Views = (() => {
     const porCat = {};
     rows.forEach(({p,c}) => {
       const k = p.categoriaId;
-      porCat[k] = porCat[k] || {n:0, cost:0, prec:0, mg:0, mkp:0, cn:0, aum:0, sin:0};
-      const o = porCat[k]; o.n++;
+      porCat[k] = porCat[k] || {n:0, cost:0, prec:0, mg:0, mkp:0, cn:0, aum:0, sin:0, mods:new Set()};
+      const o = porCat[k]; o.n++; o.mods.add(p.modelo||'');
       if(c.tieneCosto){ o.cn++; o.cost+=c.costoFinal; o.prec+=c.lista; o.mg+=c.margen; o.mkp+=c.markup;
         if(c.aumentoPct>0.001) o.aum++; } else o.sin++;
     });
     const catRows = Object.entries(porCat)
-      .map(([id,o]) => ({id, nombre:Data.catNombre(id), ...o,
+      .map(([id,o]) => ({id, nombre:Data.catNombre(id), ...o, modelos:o.mods.size,
         costProm:o.cn?o.cost/o.cn:0, precProm:o.cn?o.prec/o.cn:0,
         mgProm:o.cn?o.mg/o.cn:0, mkpProm:o.cn?o.mkp/o.cn:0, cob:o.n?o.cn/o.n:0}))
       .sort((a,b)=>b.n-a.n);
 
     const catTbl = `<div class="tbl-wrap"><table class="tbl">
       <thead><tr>
-        <th>Categoría</th><th class="num">Productos</th><th class="num">Cobertura</th>
+        <th>Categoría</th><th class="num">Modelos</th><th class="num">Variantes</th><th class="num">Cobertura</th>
         <th class="num">Costo prom.</th><th class="num">Precio prom.</th>
         <th class="num">Margen prom.</th><th class="num">Markup prom.</th><th class="num">Para aumentar</th>
       </tr></thead><tbody>${catRows.map(r=>`
         <tr class="clickable" onclick="Views.irProductos({cat:'${r.id}'})">
           <td class="strong">${esc(r.nombre)}</td>
+          <td class="num">${r.modelos.toLocaleString('es-AR')}</td>
           <td class="num">${r.n.toLocaleString('es-AR')}</td>
           <td class="num"><div style="display:flex;align-items:center;gap:7px;justify-content:flex-end">
             <span class="${r.cob<0.5?'t-red':r.cob<0.9?'t-amber':'t-green'}">${(r.cob*100).toFixed(0)}%</span>
@@ -219,7 +222,7 @@ const Views = (() => {
           <td class="num">${r.aum?`<span class="badge b-amber"><span class="dot"></span>${r.aum}</span>`:'<span class="t-mut">—</span>'}</td>
         </tr>`).join('')}</tbody>
       <tfoot><tr>
-        <td>Total general</td><td class="num">${t.total.toLocaleString('es-AR')}</td>
+        <td>Total general</td><td class="num">${totalModelos.toLocaleString('es-AR')}</td><td class="num">${t.total.toLocaleString('es-AR')}</td>
         <td class="num">${(t.costeados/t.total*100).toFixed(0)}%</td>
         <td class="num">${money(t.costoProm)}</td><td class="num">${money(t.precioProm)}</td>
         <td class="num">${pct1(t.margenProm)}</td><td class="num">${mk(t.markupProm)}</td>

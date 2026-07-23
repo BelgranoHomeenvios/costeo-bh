@@ -1457,24 +1457,24 @@ Object.assign(Views, {
      Vista aparte de los costeados: qué muebles hay que cotizar.
      ============================================================ */
   cotizar(){
-    const scs = Data.s.sinCosto || [];
+    const pend = Views.calcAll().filter(r=>!r.c.tieneCosto);
     const f = Views.F.cotizar || (Views.F.cotizar = {cat:'', q:''});
-    if(!scs.length) return `
+    if(!pend.length) return `
       <div class="page-head"><div><h2>Por cotizar</h2>
-        <div class="sub">Productos de Tienda Nube todavía sin costo cargado</div></div></div>
-      <div class="card"><div class="card-body">Todavía no hay productos sin costo cargados.</div></div>`;
+        <div class="sub">Muebles sin costo cargado — los que faltan cotizar</div></div></div>
+      <div class="card"><div class="card-body">No hay productos sin costo. ¡Está todo costeado!</div></div>`;
 
-    const catList = [...new Set(scs.map(p=>p.categoriaId))]
-      .map(id=>({id, nombre:Data.catNombre(id), n:scs.filter(p=>p.categoriaId===id).length}))
+    const catList = [...new Set(pend.map(r=>r.p.categoriaId))]
+      .map(id=>({id, nombre:Data.catNombre(id), n:pend.filter(r=>r.p.categoriaId===id).length}))
       .sort((a,b)=>b.n-a.n);
 
     const q = (f.q||'').trim().toLowerCase();
-    let sel = scs;
-    if(f.cat) sel = sel.filter(p=>p.categoriaId===f.cat);
-    if(q)     sel = sel.filter(p=>(p.modelo||'').toLowerCase().includes(q));
+    let sel = pend;
+    if(f.cat) sel = sel.filter(r=>r.p.categoriaId===f.cat);
+    if(q)     sel = sel.filter(r=>(r.p.modelo||'').toLowerCase().includes(q));
 
     const gmap = {};
-    sel.forEach(p=>{ const k=p.categoriaId+'::'+p.modelo;
+    sel.forEach(({p})=>{ const k=p.categoriaId+'::'+p.modelo;
       (gmap[k]=gmap[k]||{modelo:p.modelo, catId:p.categoriaId, items:[]}).items.push(p); });
     const grupos = Object.values(gmap).sort((a,b)=>
       a.catId===b.catId ? String(a.modelo||'').localeCompare(String(b.modelo||''))
@@ -1484,7 +1484,7 @@ Object.assign(Views, {
       const precios = g.items.map(x=>Number(x.precioLista)||0).filter(v=>v>0);
       const min = precios.length?Math.min(...precios):0, max = precios.length?Math.max(...precios):0;
       const medidas = [...new Set(g.items.map(x=>x.medida).filter(Boolean))];
-      return `<tr>
+      return `<tr class="clickable" data-cat="${esc(g.catId)}" data-mod="${esc(g.modelo||'')}" onclick="Views.verCotizar(this)">
         <td class="strong">${esc(g.modelo||'—')}</td>
         <td>${esc(Data.catNombre(g.catId))}</td>
         <td class="num">${g.items.length}</td>
@@ -1496,20 +1496,20 @@ Object.assign(Views, {
     return `
       <div class="page-head">
         <div><h2>Por cotizar</h2>
-          <div class="sub">${scs.length.toLocaleString('es-AR')} variantes de Tienda Nube sin costo cargado</div></div>
+          <div class="sub">${pend.length.toLocaleString('es-AR')} variantes sin costo — clic en un modelo para cargarlo</div></div>
       </div>
       <div class="kpi-grid">
-        ${UI.kpi({label:'Variantes por cotizar', value:scs.length.toLocaleString('es-AR'),
+        ${UI.kpi({label:'Variantes por cotizar', value:pend.length.toLocaleString('es-AR'),
           icon:'box', bg:'var(--gray-l)', color:'var(--sec)'})}
         ${UI.kpi({label:'Modelos distintos',
-          value:[...new Set(scs.map(p=>p.categoriaId+'::'+p.modelo))].length.toLocaleString('es-AR'),
+          value:[...new Set(pend.map(r=>r.p.categoriaId+'::'+r.p.modelo))].length.toLocaleString('es-AR'),
           icon:'tag', bg:'var(--blue-l)', color:'var(--blue)'})}
         ${UI.kpi({label:'Categorías', value:catList.length,
           icon:'chart', bg:'var(--green-l)', color:'var(--green)'})}
       </div>
       <div class="card mb"><div class="card-body" style="display:flex;gap:9px;flex-wrap:wrap;align-items:center">
         <select class="inp" style="max-width:280px" onchange="Views.setCotizar('cat', this.value)">
-          <option value="">Todas las categorías (${scs.length.toLocaleString('es-AR')})</option>
+          <option value="">Todas las categorías (${pend.length.toLocaleString('es-AR')})</option>
           ${catList.map(c=>`<option value="${esc(c.id)}" ${f.cat===c.id?'selected':''}>${esc(c.nombre)} (${c.n.toLocaleString('es-AR')})</option>`).join('')}
         </select>
         <input class="inp" style="max-width:240px" placeholder="Buscar modelo…" value="${esc(f.q||'')}"
@@ -1527,6 +1527,11 @@ Object.assign(Views, {
     Router.refresh();
     if(foco){ const i=document.querySelector('#view input[placeholder^="Buscar modelo"]');
       if(i){ i.focus(); i.setSelectionRange(i.value.length,i.value.length); } }
+  },
+
+  /** Clic en un modelo por cotizar → abre esa fila en la planilla de Productos. */
+  verCotizar(el){
+    Views.irProductos({cat: el.dataset.cat || '', modelo: el.dataset.mod || ''});
   }
 });
 

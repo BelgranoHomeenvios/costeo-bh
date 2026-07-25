@@ -846,7 +846,8 @@ function familiaEditor(){
 
   const s2 = fsec(2,'Colores de cuerpo','Cada color = una placa + su tapacanto',
     `${(d.colores||[]).length} color${(d.colores||[]).length!==1?'es':''}`,
-    `${coloresRows}<button class="add-line-btn" data-addfc>+ Agregar color</button>`);
+    `<div class="fam-row-head cols"><span>Color</span><span>Placa (cuerpo)</span><span>Tapacanto</span><span></span></div>
+     ${coloresRows}<button class="add-line-btn" data-addfc>+ Agregar color</button>`);
 
   const s3 = fsec(3,'Tipos de puerta','La de placa toma el color del cuerpo',
     `${(d.puerta_tipos||[]).length} tipo${(d.puerta_tipos||[]).length!==1?'s':''}`,
@@ -865,14 +866,15 @@ function familiaEditor(){
 
   const s4 = fsec(4,'Materiales y herrajes fijos','Fondo, combos e insumos sueltos (no cambian con el color)',
     `${((rf.sueltos||[]).length)+((rf.kits||[]).length)} ítem(s)`,
-    `<div class="field"><label>Fondo (material)</label><select id="fam-fondo"><option value="">— sin fondo —</option>
+    `<div class="field" style="max-width:420px"><label>Fondo (material)</label><select id="fam-fondo"><option value="">— sin fondo —</option>
         ${placas.map(m=>`<option value="${m.id}" ${m.id===(rf.fondo&&rf.fondo.material_id)?'selected':''}>${esc(m.nombre)}</option>`).join('')}</select></div>
-      <div class="field"><label>Combos de insumos</label>
-        <div id="fam-kits">${kitsRows(d)}</div>
-        <button class="add-line-btn" data-addkit style="margin-top:4px;">+ Agregar combo</button></div>
-      <div class="field"><label>Insumos y herrajes sueltos <span style="color:var(--mut);">(correderas, pitutos, cola…)</span></label>
-        <div id="fam-sueltos">${sueltosRows(d)}</div>
-        <button class="add-line-btn" data-addsuelto style="margin-top:4px;">+ Agregar insumo / herraje</button></div>`);
+      <div class="fam-block-lbl">Insumos y herrajes sueltos <span style="color:var(--mut);font-weight:500;">(correderas, pitutos, cola…)</span></div>
+      <div class="fam-row-head sueltos"><span>Insumo / herraje</span><span style="text-align:right">Cant.</span><span></span></div>
+      <div id="fam-sueltos">${sueltosRows(d)}</div>
+      <button class="add-line-btn" data-addsuelto style="margin-top:6px;">+ Agregar insumo / herraje</button>
+      <div class="fam-block-lbl">Combos de insumos <span style="color:var(--mut);font-weight:500;">(opcional)</span></div>
+      <div id="fam-kits">${kitsRows(d)}</div>
+      <button class="add-line-btn" data-addkit style="margin-top:6px;">+ Agregar combo</button>`);
 
   const s5 = fsec(5,'Mano de obra','Roles que intervienen; las horas van en cada medida',
     `${(d.roles||[]).length} rol(es)`,

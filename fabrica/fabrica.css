@@ -266,6 +266,25 @@
 .mod-fab .caret{display:inline-block;transition:transform .15s ease;color:var(--mut);
   font-size:10px;margin-right:7px;flex:none}
 
+/* ---- KPIs de la portada de modelos ---- */
+.mod-fab .kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+@media(max-width:820px){.mod-fab .kpi-row{grid-template-columns:repeat(2,1fr)}}
+.mod-fab .kpi{background:var(--card);border:1px solid var(--line);border-radius:var(--r);
+  box-shadow:var(--sh);padding:14px 16px}
+.mod-fab .kpi-l{font-size:var(--t-sm);color:var(--sec);font-weight:600}
+.mod-fab .kpi-v{font-size:var(--t-2xl);font-weight:800;letter-spacing:-.4px;
+  font-variant-numeric:tabular-nums;margin-top:2px}
+.mod-fab .kpi-s{font-size:var(--t-xs);color:var(--mut);text-transform:uppercase;
+  letter-spacing:.04em;margin-top:1px}
+.mod-fab .subtab-n{color:var(--mut);font-weight:700;font-size:var(--t-sm)}
+.mod-fab .subtab.active .subtab-n{color:#C7D8F5}
+.mod-fab .ver-mas{margin:10px 0 2px;background:none;border:none;color:var(--blue);
+  font-weight:650;font-size:var(--t-md);cursor:pointer;padding:4px 0}
+.mod-fab .ver-mas:hover{text-decoration:underline}
+.mod-fab .mini.vars{min-width:420px;max-width:640px}
+.mod-fab .mod-dis{color:var(--sec)}
+.mod-fab .mod-costo{font-weight:650}
+
 /* ---- Lista de modelos por categoría ---- */
 .mod-fab .mod-toolbar{display:flex;justify-content:flex-end;margin-bottom:14px}
 .mod-fab .modcat{background:var(--card);border:1px solid var(--line);border-radius:var(--r);

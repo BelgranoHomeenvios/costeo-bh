@@ -7,6 +7,16 @@
    ============================================================ */
 const Supa = (() => {
   const CFG_KEY = 'bh-ccr-conexion';
+
+  /* Conexión fija del proyecto. La anon key es PÚBLICA por diseño: lo que
+     protege los datos es el RLS (sin sesión iniciada, la base devuelve vacío).
+     Con esto, la app salta el paso "Conectar con la base" y va directo al
+     login de email/contraseña. Para usar otra base, dejá BAKED.key vacío. */
+  const BAKED = {
+    url: 'https://bbxyoojlfcaxbkdsqlyg.supabase.co',
+    key: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJieHlvb2psZmNheGJrZHNxbHlnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQwMzE0NjksImV4cCI6MjA5OTYwNzQ2OX0.-kxOe4-NZ1yz_la9ABXLiwNhoaesjWhPKGWv7SxOYVs'
+  };
+
   let cli = null, cfg = null, user = null;
 
   function leerCfg(){
@@ -57,9 +67,10 @@ const Supa = (() => {
     configurado: () => !!cfg,
     conectado:   () => !!user,
 
-    /** Inicializa el cliente con la config guardada (si existe). */
+    /** Inicializa el cliente con la config guardada, o con la conexión
+     *  fija del proyecto (BAKED) si está cargada. */
     async init(){
-      cfg = leerCfg();
+      cfg = leerCfg() || (BAKED.key ? {url:BAKED.url, key:BAKED.key} : null);
       if(!cfg || !window.supabase) return false;
       cli = window.supabase.createClient(cfg.url, cfg.key);
       const {data} = await cli.auth.getSession();

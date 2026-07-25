@@ -232,10 +232,10 @@ const Router = (() => {
      inicio:'fab.familias',
      paginas:[
        {id:'fab.familias',    label:'Modelos',       icon:'box'},
-       {id:'fab.products',    label:'Productos',     icon:'tag'},
+       {id:'fab.products',    label:'Productos',     icon:'tag',   oculto:true},
        {id:'fab.materiales',  label:'Materiales',    icon:'imp'},
        {id:'fab.labor',       label:'Mano de obra',  icon:'clock'},
-       {id:'fab.variaciones', label:'Variaciones',   icon:'sim'},
+       {id:'fab.variaciones', label:'Variaciones',   icon:'sim',   oculto:true},
        {id:'fab.config',      label:'Configuración', icon:'gear'}
      ]},
     {id:'prov', pill:'Proveedores', url:'proveedores/',

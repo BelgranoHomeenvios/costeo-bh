@@ -33,7 +33,9 @@ let state = {
   famDraft:null,            // borrador de la familia en edición (modelo nuevo)
   medIx:null,               // índice de la medida abierta en ficha
   modOpen:{},               // qué modelos están desplegados en la lista
-  catClosed:{},             // qué categorías están cerradas en la lista
+  modVarsAll:{},            // qué modelos muestran TODAS sus variantes
+  modCat:'todos',           // tab de categoría activa en la lista
+  catClosed:{},             // (legacy) categorías cerradas en la lista
   famSecClosed:{},          // qué secciones del editor están cerradas
   preview:null              // variante que muestra el panel de costo en vivo
 };
@@ -543,70 +545,95 @@ const nVariantes = fam => (fam.medidas||[]).length
   * Math.max(1,(fam.colores||[]).length)
   * combosPuertas((fam.puerta_tipos||[]).length, fam.n_puertas||0).length;
 
-/* ---- Listado de modelos (agrupado por categoría, con desplegables) ---- */
+/* ---- Listado de modelos (KPIs + tabs + variantes con costo) ---- */
 function costoRep(f, combos){
   const meds=f.medidas||[];
   if(!meds.length || !(f.colores||[]).length || !combos.length) return 0;
   return costoVariante(f, meds[0], 0, combos[0]).total;
 }
+function variantesDeModelo(f){
+  const combos = combosPuertas((f.puerta_tipos||[]).length, f.n_puertas||0);
+  const out = [];
+  (f.medidas||[]).forEach(m=>(f.colores||[]).forEach((col,ci)=>combos.forEach(cmb=>{
+    out.push({med:`${m.ancho||'?'} × ${m.alto||'?'}`, color:col.label||'—',
+              puertas:comboLabel(f,cmb), costo:costoVariante(f,m,ci,cmb).total});
+  })));
+  return out;
+}
 function filaModelo(f){
   const combos = combosPuertas((f.puerta_tipos||[]).length, f.n_puertas||0);
   const abierto = !!state.modOpen[f.id];
-  const meds = f.medidas||[];
   const rep = costoRep(f, combos);
-  const col0 = (f.colores||[])[0]||{}, cmb0 = combos[0]||[];
-  const detalle = abierto ? `
-    <tr class="mod-detail"><td colspan="6"><div class="mod-detail-in">
-      ${meds.length ? `<table class="mini"><thead><tr><th>Medida</th>
-          <th class="num">Costo · ${esc(col0.label||'1er color')} · ${esc(comboLabel(f,cmb0))}</th></tr></thead>
-        <tbody>${meds.map(m=>`<tr><td>${m.ancho||'?'} × ${m.alto||'?'}</td>
-          <td class="num">$${fmt(costoVariante(f,m,0,cmb0).total)}</td></tr>`).join('')}</tbody></table>`
-        : '<div class="helper" style="margin:0;">Sin medidas cargadas todavía.</div>'}
-      <div class="mod-detail-chips">
-        ${(f.colores||[]).map(c=>`<span class="chip chip-static">${esc(c.label||'color')}</span>`).join(' ')}
-        ${combos.map(c=>`<span class="chip">${esc(comboLabel(f,c))}</span>`).join(' ')}
-      </div>
-      <div class="mod-detail-foot">
-        <button class="btn-primary btn-sm" data-editfam="${f.id}">Abrir para editar</button>
-        <button class="icon-btn" data-delfam="${f.id}">Borrar modelo</button>
-      </div>
-    </div></td></tr>` : '';
+  const nv = nVariantes(f);
+  const disenio = `${esc(f.apertura||'—')}${f.n_puertas?` · ${f.n_puertas} puertas`:''} · ${nv} variante${nv!==1?'s':''}`;
+  let detalle = '';
+  if(abierto){
+    const vars = variantesDeModelo(f);
+    const verTodas = !!state.modVarsAll[f.id];
+    const vis = verTodas ? vars : vars.slice(0,6);
+    const tabla = vars.length ? `<table class="mini vars"><thead><tr>
+        <th>Medida</th><th>Color</th><th>Puertas</th><th class="num">Costo directo</th></tr></thead>
+      <tbody>${vis.map(v=>`<tr>
+        <td><strong>${esc(v.med)}</strong></td><td>${esc(v.color)}</td>
+        <td>${esc(v.puertas)}</td><td class="num">$${fmt(v.costo)}</td></tr>`).join('')}</tbody></table>
+      ${(vars.length>6 && !verTodas)?`<button class="ver-mas" data-modmore="${f.id}">
+        Ver las ${vars.length-6} variantes restantes ▾</button>`:''}`
+      : '<div class="helper" style="margin:0;">Sin variantes todavía. Abrí el modelo y cargá medidas, colores y puertas.</div>';
+    detalle = `<tr class="mod-detail"><td colspan="3"><div class="mod-detail-in">
+        ${tabla}
+        <div class="mod-detail-foot">
+          <button class="btn-primary btn-sm" data-editfam="${f.id}">Abrir para editar</button>
+          <button class="icon-btn" data-delfam="${f.id}">Borrar modelo</button>
+        </div>
+      </div></td></tr>`;
+  }
   return `<tr class="mod-row ${abierto?'on':''}" data-modtog="${f.id}">
       <td class="mod-caret"><span class="caret">▶</span><strong>${esc(f.nombre)}</strong></td>
-      <td>${esc(f.apertura||'—')}${f.n_puertas?` · ${f.n_puertas} puertas`:''}</td>
-      <td class="num">${meds.length}</td>
-      <td class="num">${(f.colores||[]).length}</td>
-      <td class="num">${nVariantes(f)}</td>
-      <td class="num">${rep?`desde $${fmt(rep)}`:'—'}</td>
+      <td class="mod-dis">${disenio}</td>
+      <td class="num mod-costo">${rep?`desde $${fmt(rep)}`:'—'}</td>
     </tr>${detalle}`;
 }
 function familiasPage(){
   const fams = state.familias;
+  state.modCat = state.modCat || 'todos';
   const catName = id => (state.categorias.find(c=>c.id===id)||{}).nombre || 'Sin categoría';
-  const grupos = {};
-  fams.forEach(f=>{ const k=f.categoria_id||'__none'; (grupos[k]=grupos[k]||[]).push(f); });
-  const orden = Object.keys(grupos).sort((a,b)=>catName(a).localeCompare(catName(b)));
 
-  const body = orden.length ? orden.map(k=>{
-    const list = grupos[k];
-    const abierta = !state.catClosed[k];
-    return `<div class="modcat ${abierta?'open':''}">
-      <div class="modcat-h" data-cattog="${esc(k)}">
-        <span class="caret">▶</span>
-        <span class="modcat-t">${esc(catName(k))}</span>
-        <span class="modcat-n">${list.length} modelo${list.length!==1?'s':''}</span>
-      </div>
-      <div class="modcat-b"><table class="mod-tbl"><thead><tr>
-        <th>Modelo</th><th>Diseño</th><th class="num">Medidas</th>
-        <th class="num">Colores</th><th class="num">Variantes</th><th class="num">Costo</th>
-      </tr></thead><tbody>${list.map(filaModelo).join('')}</tbody></table></div>
-    </div>`;
-  }).join('') : empty('Todavía no cargaste ningún modelo. Empezá con "+ Nuevo modelo".');
+  // KPIs
+  const totVar = fams.reduce((s,f)=>s+nVariantes(f),0);
+  const reps = fams.map(f=>costoRep(f, combosPuertas((f.puerta_tipos||[]).length,f.n_puertas||0))).filter(x=>x>0);
+  const costoProm = reps.length ? Math.round(reps.reduce((a,b)=>a+b,0)/reps.length) : 0;
+  const nCats = new Set(fams.map(f=>f.categoria_id||'__none')).size;
+  const kpi = (lbl,val,sub)=>`<div class="kpi"><div class="kpi-l">${lbl}</div>
+     <div class="kpi-v">${val}</div><div class="kpi-s">${sub||''}</div></div>`;
+  const kpis = `<div class="kpi-row">
+    ${kpi('Modelos', fams.length, 'plantillas')}
+    ${kpi('Variantes', fmt(totVar), 'combinaciones')}
+    ${kpi('Costo promedio', costoProm?('$'+fmt(costoProm)):'—', 'costo directo')}
+    ${kpi('Categorías', nCats, 'con modelos')}
+  </div>`;
+
+  // Tabs por categoría
+  const conteo = {}; fams.forEach(f=>{ const k=f.categoria_id||'__none'; conteo[k]=(conteo[k]||0)+1; });
+  const tabDefs = [['todos','Todos',fams.length]]
+    .concat(Object.keys(conteo).sort((a,b)=>catName(a).localeCompare(catName(b)))
+      .map(k=>[k,catName(k),conteo[k]]));
+  const tabs = `<div class="subtabbar">${tabDefs.map(([k,n,c])=>
+    `<button class="subtab ${state.modCat===k?'active':''}" data-modcat="${esc(k)}">${esc(n)} <span class="subtab-n">${c}</span></button>`).join('')}
+    <button class="btn-primary btn-sm" style="margin-left:auto" data-newfam>+ Nuevo modelo</button></div>`;
+
+  // Lista filtrada
+  const list = (state.modCat==='todos' ? fams : fams.filter(f=>(f.categoria_id||'__none')===state.modCat))
+    .slice().sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''));
+
+  const tabla = list.length ? `<div class="card" style="padding:0;overflow:hidden;">
+    <table class="mod-tbl"><thead><tr>
+      <th>Modelo</th><th>Diseño</th><th class="num">Costo</th>
+    </tr></thead><tbody>${list.map(filaModelo).join('')}</tbody></table></div>`
+    : empty(fams.length ? 'No hay modelos en esta categoría.' : 'Todavía no cargaste ningún modelo. Empezá con "+ Nuevo modelo".');
 
   return head('01 · Modelos','Modelos de fábrica',
-      'Cada modelo es una plantilla (placard, cama…): se carga una vez y se despliega en todas sus variantes de medida, color y puertas. Tocá un modelo para ver su despiece.')
-    + `<div class="mod-toolbar"><button class="btn-primary btn-sm" data-newfam>+ Nuevo modelo</button></div>`
-    + body;
+      'Cada modelo se carga una vez y se despliega en todas sus variantes. Tocá un modelo para ver sus variantes y el costo de cada una.')
+    + kpis + tabs + tabla;
 }
 
 /* ---- Draft nuevo ---- */
@@ -1289,8 +1316,12 @@ function bindFamilias(){
     await sb.from('familias').delete().eq('id',e.dataset.delfam); await loadAll();});
   document.querySelectorAll('[data-editfam]').forEach(e=>e.addEventListener('click',ev=>ev.stopPropagation()));
   document.querySelectorAll('[data-modtog]').forEach(e=>e.onclick=(ev)=>{
-    if(ev.target.closest('[data-editfam],[data-delfam]')) return;
+    if(ev.target.closest('[data-editfam],[data-delfam],[data-modmore]')) return;
     const id=e.dataset.modtog; state.modOpen[id]=!state.modOpen[id]; render();});
+  document.querySelectorAll('[data-modcat]').forEach(e=>e.onclick=()=>{
+    state.modCat=e.dataset.modcat; render();});
+  document.querySelectorAll('[data-modmore]').forEach(e=>e.onclick=(ev)=>{
+    ev.stopPropagation(); state.modVarsAll[e.dataset.modmore]=true; render();});
   document.querySelectorAll('[data-cattog]').forEach(e=>e.onclick=()=>{
     const k=e.dataset.cattog; state.catClosed[k]=!state.catClosed[k]; render();});
 

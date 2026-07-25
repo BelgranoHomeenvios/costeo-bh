@@ -259,3 +259,84 @@
 }
 .mod-fab .modal-close:hover{background:var(--gray-l);color:var(--ink)}
 .mod-fab .modal>form,.mod-fab .modal>div:not(.modal-head){padding:18px 20px;overflow-y:auto}
+
+/* ============================================================
+   REFORMA · Modelos (lista desplegable) + editor colapsable + costo en vivo
+   ============================================================ */
+.mod-fab .caret{display:inline-block;transition:transform .15s ease;color:var(--mut);
+  font-size:10px;margin-right:7px;flex:none}
+
+/* ---- Lista de modelos por categoría ---- */
+.mod-fab .mod-toolbar{display:flex;justify-content:flex-end;margin-bottom:14px}
+.mod-fab .modcat{background:var(--card);border:1px solid var(--line);border-radius:var(--r);
+  box-shadow:var(--sh);margin-bottom:12px;overflow:hidden}
+.mod-fab .modcat-h{display:flex;align-items:center;gap:4px;padding:13px 16px;cursor:pointer;user-select:none}
+.mod-fab .modcat-h:hover{background:#FAFCFE}
+.mod-fab .modcat.open .modcat-h .caret{transform:rotate(90deg)}
+.mod-fab .modcat-t{font-weight:700;font-size:var(--t-lg)}
+.mod-fab .modcat-n{margin-left:auto;color:var(--mut);font-size:var(--t-sm);font-weight:600}
+.mod-fab .modcat-b{display:none;border-top:1px solid var(--line2)}
+.mod-fab .modcat.open .modcat-b{display:block}
+.mod-fab .mod-tbl{width:100%}
+.mod-fab .mod-row{cursor:pointer}
+.mod-fab .mod-row.on{background:var(--blue-l)}
+.mod-fab .mod-row.on:hover{background:var(--blue-l)}
+.mod-fab .mod-caret{display:flex;align-items:center}
+.mod-fab .mod-row.on .caret{transform:rotate(90deg)}
+.mod-fab .mod-detail>td{padding:0;background:#F8FAFD}
+.mod-fab .mod-detail-in{padding:14px 16px 16px 34px;display:flex;flex-direction:column;gap:12px}
+.mod-fab .mini{width:auto;min-width:280px;max-width:440px;border:1px solid var(--line2);
+  border-radius:var(--r-sm);overflow:hidden}
+.mod-fab .mini thead th{background:#EEF3F9}
+.mod-fab .mod-detail-chips{display:flex;flex-wrap:wrap;gap:6px}
+.mod-fab .mod-detail-foot{display:flex;gap:8px;align-items:center}
+
+/* ---- Editor: dos columnas (secciones + costo fijo) ---- */
+.mod-fab .fam-editor-head{display:flex;align-items:center;gap:12px;margin-bottom:16px}
+.mod-fab .fam-grid{display:grid;grid-template-columns:1fr 330px;gap:18px;align-items:start}
+@media(max-width:1080px){.mod-fab .fam-grid{grid-template-columns:1fr}}
+.mod-fab .fam-secs{display:flex;flex-direction:column;gap:12px;min-width:0}
+.mod-fab .fam-side{position:sticky;top:16px}
+@media(max-width:1080px){.mod-fab .fam-side{position:static}}
+
+/* ---- Sección colapsable ---- */
+.mod-fab .fsec{background:var(--card);border:1px solid var(--line);border-radius:var(--r);
+  box-shadow:var(--sh);overflow:hidden}
+.mod-fab .fsec-h{display:flex;align-items:center;gap:12px;padding:14px 16px;cursor:pointer;user-select:none}
+.mod-fab .fsec-h:hover{background:#FAFCFE}
+.mod-fab .fsec-n{width:26px;height:26px;border-radius:var(--r-sm);background:var(--blue-l);
+  color:var(--blue-d);display:grid;place-items:center;font-weight:800;font-size:var(--t-md);flex:none}
+.mod-fab .fsec-tt{flex:1;min-width:0}
+.mod-fab .fsec-t{font-weight:700;font-size:var(--t-bd)}
+.mod-fab .fsec-d{color:var(--mut);font-size:var(--t-sm);margin-top:1px}
+.mod-fab .fsec-meta{display:flex;align-items:center;gap:12px;color:var(--sec);
+  font-size:var(--t-md);font-weight:600}
+.mod-fab .fsec.open .fsec-meta .caret{transform:rotate(90deg)}
+.mod-fab .fsec-b{display:none;padding:4px 16px 16px;border-top:1px solid var(--line2)}
+.mod-fab .fsec.open .fsec-b{display:block}
+
+/* ---- Panel de costo en vivo ---- */
+.mod-fab .cp-card{overflow:hidden}
+.mod-fab .cp-h{display:flex;align-items:center;gap:8px;padding:13px 15px;
+  border-bottom:1px solid var(--line2);font-weight:700;font-size:var(--t-bd)}
+.mod-fab .cp-b{padding:14px 15px}
+.mod-fab .cp-sel{display:flex;flex-direction:column;gap:8px}
+.mod-fab .cp-sel .field{margin-bottom:0}
+.mod-fab .cp-big{text-align:center;margin:16px 0 4px}
+.mod-fab .cp-lbl{font-size:var(--t-xs);text-transform:uppercase;letter-spacing:.06em;
+  color:var(--mut);font-weight:700}
+.mod-fab .cp-val{font-size:30px;font-weight:800;letter-spacing:-.02em;
+  font-variant-numeric:tabular-nums;margin-top:2px}
+.mod-fab .cp-bar{height:8px;border-radius:5px;background:var(--line2);display:flex;
+  overflow:hidden;margin:14px 0 2px}
+.mod-fab .cp-bar span{height:100%}
+.mod-fab .cp-brk{display:flex;flex-direction:column;margin-top:8px}
+.mod-fab .cp-row{display:flex;align-items:center;gap:9px;padding:7px 2px;
+  border-bottom:1px solid var(--line2)}
+.mod-fab .cp-row:last-child{border-bottom:none}
+.mod-fab .cp-dot{width:9px;height:9px;border-radius:3px;flex:none}
+.mod-fab .cp-nm{font-size:var(--t-md);font-weight:600}
+.mod-fab .cp-pc{margin-left:auto;color:var(--mut);font-size:var(--t-sm);
+  font-variant-numeric:tabular-nums}
+.mod-fab .cp-am{width:80px;text-align:right;font-size:var(--t-md);font-weight:650;
+  font-variant-numeric:tabular-nums}

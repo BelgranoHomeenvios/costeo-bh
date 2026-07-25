@@ -231,7 +231,7 @@ const Router = (() => {
      desc:'Qué cuesta producir cada mueble',
      inicio:'fab.familias',
      paginas:[
-       {id:'fab.familias',    label:'Familias',      icon:'box'},
+       {id:'fab.familias',    label:'Modelos',       icon:'box'},
        {id:'fab.products',    label:'Productos',     icon:'tag'},
        {id:'fab.materiales',  label:'Materiales',    icon:'imp'},
        {id:'fab.labor',       label:'Mano de obra',  icon:'clock'},

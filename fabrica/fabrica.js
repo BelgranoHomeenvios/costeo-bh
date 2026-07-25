@@ -31,7 +31,11 @@ let state = {
   espejoSel:0,              // 0 | 1 | 2 puertas espejadas
   variante:{mat:0, esp:0},  // variante que se está viendo en el detalle (mat = índice en config.variantes_material)
   famDraft:null,            // borrador de la familia en edición (modelo nuevo)
-  medIx:null                // índice de la medida abierta en ficha
+  medIx:null,               // índice de la medida abierta en ficha
+  modOpen:{},               // qué modelos están desplegados en la lista
+  catClosed:{},             // qué categorías están cerradas en la lista
+  famSecClosed:{},          // qué secciones del editor están cerradas
+  preview:null              // variante que muestra el panel de costo en vivo
 };
 
 /* ---------- VARIANTES ----------
@@ -539,25 +543,70 @@ const nVariantes = fam => (fam.medidas||[]).length
   * Math.max(1,(fam.colores||[]).length)
   * combosPuertas((fam.puerta_tipos||[]).length, fam.n_puertas||0).length;
 
-/* ---- Listado de familias ---- */
+/* ---- Listado de modelos (agrupado por categoría, con desplegables) ---- */
+function costoRep(f, combos){
+  const meds=f.medidas||[];
+  if(!meds.length || !(f.colores||[]).length || !combos.length) return 0;
+  return costoVariante(f, meds[0], 0, combos[0]).total;
+}
+function filaModelo(f){
+  const combos = combosPuertas((f.puerta_tipos||[]).length, f.n_puertas||0);
+  const abierto = !!state.modOpen[f.id];
+  const meds = f.medidas||[];
+  const rep = costoRep(f, combos);
+  const col0 = (f.colores||[])[0]||{}, cmb0 = combos[0]||[];
+  const detalle = abierto ? `
+    <tr class="mod-detail"><td colspan="6"><div class="mod-detail-in">
+      ${meds.length ? `<table class="mini"><thead><tr><th>Medida</th>
+          <th class="num">Costo · ${esc(col0.label||'1er color')} · ${esc(comboLabel(f,cmb0))}</th></tr></thead>
+        <tbody>${meds.map(m=>`<tr><td>${m.ancho||'?'} × ${m.alto||'?'}</td>
+          <td class="num">$${fmt(costoVariante(f,m,0,cmb0).total)}</td></tr>`).join('')}</tbody></table>`
+        : '<div class="helper" style="margin:0;">Sin medidas cargadas todavía.</div>'}
+      <div class="mod-detail-chips">
+        ${(f.colores||[]).map(c=>`<span class="chip chip-static">${esc(c.label||'color')}</span>`).join(' ')}
+        ${combos.map(c=>`<span class="chip">${esc(comboLabel(f,c))}</span>`).join(' ')}
+      </div>
+      <div class="mod-detail-foot">
+        <button class="btn-primary btn-sm" data-editfam="${f.id}">Abrir para editar</button>
+        <button class="icon-btn" data-delfam="${f.id}">Borrar modelo</button>
+      </div>
+    </div></td></tr>` : '';
+  return `<tr class="mod-row ${abierto?'on':''}" data-modtog="${f.id}">
+      <td class="mod-caret"><span class="caret">▶</span><strong>${esc(f.nombre)}</strong></td>
+      <td>${esc(f.apertura||'—')}${f.n_puertas?` · ${f.n_puertas} puertas`:''}</td>
+      <td class="num">${meds.length}</td>
+      <td class="num">${(f.colores||[]).length}</td>
+      <td class="num">${nVariantes(f)}</td>
+      <td class="num">${rep?`desde $${fmt(rep)}`:'—'}</td>
+    </tr>${detalle}`;
+}
 function familiasPage(){
   const fams = state.familias;
-  return head('01 · Familias','Familias','Cada familia es una plantilla: se carga una vez y se despliega en todas sus variantes de medida, color y puertas.')
-  + `<div class="card">
-      <div class="card-title">Familias cargadas<button class="btn-primary btn-sm" data-newfam>+ Nueva familia</button></div>
-      ${fams.length?`<table><thead><tr><th>Nombre</th><th>Diseño</th><th class="num">Medidas</th>
-        <th class="num">Colores</th><th class="num">Variantes</th><th></th></tr></thead>
-        <tbody>${fams.map(f=>`<tr>
-          <td><strong>${esc(f.nombre)}</strong></td>
-          <td>${esc(f.apertura)||'—'}${f.n_puertas?` · ${f.n_puertas} puertas`:''}</td>
-          <td class="num">${(f.medidas||[]).length}</td>
-          <td class="num">${(f.colores||[]).length}</td>
-          <td class="num">${nVariantes(f)}</td>
-          <td class="num"><button class="icon-btn" data-editfam="${f.id}">Abrir</button>
-            <button class="icon-btn" data-delfam="${f.id}">Borrar</button></td>
-        </tr>`).join('')}</tbody></table>`
-        : empty('Todavía no cargaste ninguna familia. Empezá con "+ Nueva familia".')}
+  const catName = id => (state.categorias.find(c=>c.id===id)||{}).nombre || 'Sin categoría';
+  const grupos = {};
+  fams.forEach(f=>{ const k=f.categoria_id||'__none'; (grupos[k]=grupos[k]||[]).push(f); });
+  const orden = Object.keys(grupos).sort((a,b)=>catName(a).localeCompare(catName(b)));
+
+  const body = orden.length ? orden.map(k=>{
+    const list = grupos[k];
+    const abierta = !state.catClosed[k];
+    return `<div class="modcat ${abierta?'open':''}">
+      <div class="modcat-h" data-cattog="${esc(k)}">
+        <span class="caret">▶</span>
+        <span class="modcat-t">${esc(catName(k))}</span>
+        <span class="modcat-n">${list.length} modelo${list.length!==1?'s':''}</span>
+      </div>
+      <div class="modcat-b"><table class="mod-tbl"><thead><tr>
+        <th>Modelo</th><th>Diseño</th><th class="num">Medidas</th>
+        <th class="num">Colores</th><th class="num">Variantes</th><th class="num">Costo</th>
+      </tr></thead><tbody>${list.map(filaModelo).join('')}</tbody></table></div>
     </div>`;
+  }).join('') : empty('Todavía no cargaste ningún modelo. Empezá con "+ Nuevo modelo".');
+
+  return head('01 · Modelos','Modelos de fábrica',
+      'Cada modelo es una plantilla (placard, cama…): se carga una vez y se despliega en todas sus variantes de medida, color y puertas. Tocá un modelo para ver su despiece.')
+    + `<div class="mod-toolbar"><button class="btn-primary btn-sm" data-newfam>+ Nuevo modelo</button></div>`
+    + body;
 }
 
 /* ---- Draft nuevo ---- */
@@ -646,6 +695,72 @@ function medidaFicha(d){
   </div>`;
 }
 
+/* ---- Sección colapsable del editor ---- */
+function fsec(n, title, sub, meta, inner){
+  const abierta = !state.famSecClosed[n];
+  return `<section class="fsec ${abierta?'open':''}">
+    <div class="fsec-h" data-sec="${n}">
+      <div class="fsec-n">${n}</div>
+      <div class="fsec-tt"><div class="fsec-t">${title}</div>${sub?`<div class="fsec-d">${sub}</div>`:''}</div>
+      <div class="fsec-meta">${meta?`<span>${meta}</span>`:''}<span class="caret">▶</span></div>
+    </div>
+    <div class="fsec-b">${inner}</div>
+  </section>`;
+}
+
+/* ---- Panel de costo en vivo (al costado del editor) ---- */
+function ensurePreview(d, combos){
+  const pv = state.preview || {};
+  const clamp = (v,max)=> Math.min(Math.max(0, v|0), Math.max(0, max-1));
+  const out = {
+    medIx:   clamp(pv.medIx,   (d.medidas||[]).length),
+    colorIx: clamp(pv.colorIx, (d.colores||[]).length),
+    comboIx: clamp(pv.comboIx, combos.length)
+  };
+  state.preview = out;
+  return out;
+}
+function famCostPanel(d){
+  const combos = combosPuertas((d.puerta_tipos||[]).length, d.n_puertas||0);
+  const pv = ensurePreview(d, combos);
+  const opt = (arr,cur,fn)=>arr.map((x,i)=>`<option value="${i}" ${i===cur?'selected':''}>${fn(x,i)}</option>`).join('')||'<option>—</option>';
+  const sel = `<div class="cp-sel">
+      <div class="field"><label>Medida</label><select data-pv="medIx">
+        ${opt(d.medidas||[], pv.medIx, m=>`${esc(m.ancho||'?')} × ${esc(m.alto||'?')}`)}</select></div>
+      <div class="field"><label>Color</label><select data-pv="colorIx">
+        ${opt(d.colores||[], pv.colorIx, (c,i)=>esc(c.label||('Color '+(i+1))))}</select></div>
+      <div class="field"><label>Puertas</label><select data-pv="comboIx">
+        ${opt(combos, pv.comboIx, c=>esc(comboLabel(d,c)))}</select></div>
+    </div>`;
+  const has = (d.medidas||[]).length && (d.colores||[]).length && combos.length;
+  if(!has) return `<div class="card cp-card"><div class="cp-h">Costo en vivo</div>
+    <div class="cp-b">${sel}<div class="helper" style="margin-top:12px;">Cargá al menos una medida, un color y las puertas para ver el costo de la variante.</div></div></div>`;
+  const med = d.medidas[pv.medIx];
+  const c = costoVariante(d, med, pv.colorIx, combos[pv.comboIx]);
+  const falt = faltantesFam(d, med, pv.colorIx, combos[pv.comboIx]);
+  const filas = [
+    ['Carcasa + filo', c.carcasa, 'var(--blue)'],
+    ['Puertas',        c.puertas, '#7C9CF5'],
+    ['Fondo',          c.fondo,   'var(--gray)'],
+    ['Herrajes e insumos', c.herrajes, 'var(--amber)'],
+    ['Mano de obra',   c.manoObra,'var(--red)'],
+    ['Otros',          c.otros,   '#A78BFA']
+  ].filter(r=>r[1]>0);
+  const tot = c.total||1;
+  return `<div class="card cp-card"><div class="cp-h">Costo en vivo <span class="pill">variante</span></div>
+    <div class="cp-b">
+      ${sel}
+      <div class="cp-big"><div class="cp-lbl">Costo directo</div><div class="cp-val">$${fmt(c.total)}</div></div>
+      <div class="cp-bar">${filas.map(r=>`<span style="width:${(r[1]/tot*100).toFixed(1)}%;background:${r[2]}"></span>`).join('')}</div>
+      <div class="cp-brk">${filas.map(r=>`<div class="cp-row">
+        <span class="cp-dot" style="background:${r[2]}"></span>
+        <span class="cp-nm">${r[0]}</span>
+        <span class="cp-pc">${(r[1]/tot*100).toFixed(0)}%</span>
+        <span class="cp-am">$${fmt(r[1])}</span></div>`).join('')}</div>
+      ${falt.length?`<div class="warn-box" style="margin-top:12px;">Faltan precios: ${esc(falt.join(', '))}</div>`:''}
+    </div></div>`;
+}
+
 /* ---- Editor de familia ---- */
 function familiaEditor(){
   const d = state.famDraft;
@@ -683,39 +798,32 @@ function familiaEditor(){
       <button class="icon-btn" data-medrm="${ix}">✕</button>
     </div>`).join('') : '<div class="helper" style="margin:0;">Todavía no cargaste ninguna medida.</div>';
 
-  return `<div class="fam-editor">
-    <div class="fam-editor-head">
-      <button class="icon-btn" data-famback>← Volver</button>
-      <h1 class="page-title" style="margin:4px 0 0;">${d.id?'Editar familia':'Nueva familia'}</h1>
-    </div>
+  const catNombre = (state.categorias.find(c=>c.id===d.categoria_id)||{}).nombre||'Sin categoría';
 
-    <div class="card">
-      <div class="fam-step">1 · Identidad</div>
-      <div class="row-2">
+  const s1 = fsec(1,'Datos generales','Nombre, categoría, apertura y puertas del modelo',
+    `${esc(catNombre)} · ${esc(d.apertura||'')}`,
+    `<div class="row-2">
         <div class="field"><label>Categoría</label><select id="fam-cat">
           ${state.categorias.map(c=>`<option value="${c.id}" ${c.id===d.categoria_id?'selected':''}>${esc(c.nombre)}</option>`).join('')}
         </select></div>
-        <div class="field"><label>Nombre de familia</label><input id="fam-nombre" value="${esc(d.nombre)}" placeholder="ej: Oliver"></div>
+        <div class="field"><label>Nombre del modelo</label><input id="fam-nombre" value="${esc(d.nombre)}" placeholder="ej: Oliver"></div>
       </div>
       <div class="row-2">
         <div class="field"><label>Diseño / apertura</label><select id="fam-apertura">
           <option value="corrediza" ${d.apertura==='corrediza'?'selected':''}>Corrediza</option>
           <option value="abrir" ${d.apertura==='abrir'?'selected':''}>De abrir</option>
         </select></div>
-        <div class="field"><label>Puertas <span style="color:var(--ink-soft);">(define la familia)</span></label>
+        <div class="field"><label>Puertas <span style="color:var(--mut);">(define el modelo)</span></label>
           <input id="fam-npuertas" type="number" min="0" max="6" value="${d.n_puertas}"></div>
-      </div>
-    </div>
+      </div>`);
 
-    <div class="card">
-      <div class="fam-step">2 · Colores de cuerpo <span class="fam-step-sub">cada uno = placa + tapacanto</span></div>
-      ${coloresRows}
-      <button class="add-line-btn" data-addfc>+ Agregar color</button>
-    </div>
+  const s2 = fsec(2,'Colores de cuerpo','Cada color = una placa + su tapacanto',
+    `${(d.colores||[]).length} color${(d.colores||[]).length!==1?'es':''}`,
+    `${coloresRows}<button class="add-line-btn" data-addfc>+ Agregar color</button>`);
 
-    <div class="card">
-      <div class="fam-step">3 · Tipos de puerta <span class="fam-step-sub">la de placa toma el color del cuerpo</span></div>
-      ${tiposRows}
+  const s3 = fsec(3,'Tipos de puerta','La de placa toma el color del cuerpo',
+    `${(d.puerta_tipos||[]).length} tipo${(d.puerta_tipos||[]).length!==1?'s':''}`,
+    `${tiposRows}
       <div class="fam-tipo-new">
         <input id="fam-npt-label" placeholder="ej: Espejo">
         <select id="fam-npt-mat"><option value="">— material —</option>
@@ -726,44 +834,52 @@ function familiaEditor(){
       ${combos.length?`<div class="fam-combos">
         <div class="fam-combos-tit">Combinaciones que se generan solas (${combos.length})</div>
         ${combos.map(c=>`<span class="chip chip-static">${esc(comboLabel(d,c))}</span>`).join(' ')}
-      </div>`:''}
-    </div>
+      </div>`:''}`);
 
-    <div class="card">
-      <div class="fam-step">4 · Materiales que siempre lleva <span class="fam-step-sub">no cambian con el color</span></div>
-      <div class="field"><label>Fondo (material)</label><select id="fam-fondo"><option value="">— sin fondo —</option>
+  const s4 = fsec(4,'Materiales y herrajes fijos','Fondo, combos e insumos sueltos (no cambian con el color)',
+    `${((rf.sueltos||[]).length)+((rf.kits||[]).length)} ítem(s)`,
+    `<div class="field"><label>Fondo (material)</label><select id="fam-fondo"><option value="">— sin fondo —</option>
         ${placas.map(m=>`<option value="${m.id}" ${m.id===(rf.fondo&&rf.fondo.material_id)?'selected':''}>${esc(m.nombre)}</option>`).join('')}</select></div>
       <div class="field"><label>Combos de insumos</label>
         <div id="fam-kits">${kitsRows(d)}</div>
         <button class="add-line-btn" data-addkit style="margin-top:4px;">+ Agregar combo</button></div>
-      <div class="field"><label>Insumos y herrajes sueltos <span style="color:var(--ink-soft);">(correderas, pitutos, cola…)</span></label>
+      <div class="field"><label>Insumos y herrajes sueltos <span style="color:var(--mut);">(correderas, pitutos, cola…)</span></label>
         <div id="fam-sueltos">${sueltosRows(d)}</div>
-        <button class="add-line-btn" data-addsuelto style="margin-top:4px;">+ Agregar insumo / herraje</button></div>
-    </div>
+        <button class="add-line-btn" data-addsuelto style="margin-top:4px;">+ Agregar insumo / herraje</button></div>`);
 
-    <div class="card">
-      <div class="fam-step">5 · Mano de obra</div>
-      <div class="helper">Los roles que marques arman los campos de horas en cada medida.</div>
-      <div class="fam-roles-pick">${roles.map(r=>`<label class="fam-role-chip"><input type="checkbox" data-famrole="${r.id}" ${(d.roles||[]).includes(r.id)?'checked':''}> ${esc(r.nombre)}</label>`).join('')||'<span style="color:var(--ink-soft);">Cargá roles en Mano de obra primero.</span>'}</div>
-    </div>
+  const s5 = fsec(5,'Mano de obra','Roles que intervienen; las horas van en cada medida',
+    `${(d.roles||[]).length} rol(es)`,
+    `<div class="helper">Los roles que marques arman los campos de horas en cada medida.</div>
+      <div class="fam-roles-pick">${roles.map(r=>`<label class="fam-role-chip"><input type="checkbox" data-famrole="${r.id}" ${(d.roles||[]).includes(r.id)?'checked':''}> ${esc(r.nombre)}</label>`).join('')||'<span style="color:var(--mut);">Cargá roles en Mano de obra primero.</span>'}</div>`);
 
-    <div class="card">
-      <div class="fam-step">6 · Medidas</div>
-      <div class="helper">Cargá una medida completa y después duplicala para las siguientes — solo cambiás lo que difiere.</div>
+  const s6 = fsec(6,'Medidas','Cada medida × color × puerta genera una variante',
+    `${(d.medidas||[]).length} medida(s)`,
+    `<div class="helper">Cargá una medida completa y después duplicala para las siguientes — solo cambiás lo que difiere.</div>
       ${medRows}
       <button class="add-line-btn" data-addmed style="margin-top:8px;">+ Agregar medida</button>
+      ${state.medIx!==null && state.medIx!==undefined ? medidaFicha(d) : ''}`);
+
+  const s7 = fsec(7,'Observaciones','Notas internas del modelo','',
+    `<input id="fam-notas" value="${esc(d.notas||'')}" placeholder="observaciones generales de este modelo">`);
+
+  return `<div class="fam-editor">
+    <div class="fam-editor-head">
+      <button class="icon-btn" data-famback>← Volver</button>
+      <div style="flex:1;min-width:0;">
+        <h1 class="page-title" style="margin:2px 0 0;">${esc(d.nombre)||(d.id?'Editar modelo':'Nuevo modelo')}</h1>
+        <div class="page-desc" style="margin:2px 0 0;">${esc(catNombre)} · ${esc(d.apertura||'')}${d.n_puertas?` · ${d.n_puertas} puertas`:''} · ${nVariantes(d)} variantes</div>
+      </div>
+      <button class="btn-primary" data-savefam>Guardar modelo</button>
     </div>
 
-    ${state.medIx!==null && state.medIx!==undefined ? medidaFicha(d) : ''}
-
-    <div class="card">
-      <div class="fam-step">7 · Notas de la familia</div>
-      <input id="fam-notas" value="${esc(d.notas||'')}" placeholder="observaciones generales de esta familia">
+    <div class="fam-grid">
+      <div class="fam-secs">${s1}${s2}${s3}${s4}${s5}${s6}${s7}</div>
+      <div class="fam-side">${famCostPanel(d)}</div>
     </div>
 
     <div class="fam-editor-foot">
       <span class="fam-count">${nVariantes(d)} variantes</span>
-      <button class="btn-primary" data-savefam>Guardar familia</button>
+      <button class="btn-primary" data-savefam>Guardar modelo</button>
     </div>
   </div>`;
 }
@@ -1167,12 +1283,25 @@ function bindFamilias(){
            state.famDraft.receta_fija.kits = state.famDraft.receta_fija.kits||[];
            state.famDraft.receta_fija.sueltos = state.famDraft.receta_fija.sueltos||[];
            state.medIx = null; render(); }});
-  document.querySelectorAll('[data-delfam]').forEach(e=>e.onclick=async()=>{
-    if(!confirm('¿Borrar esta familia? No se puede deshacer.')) return;
+  document.querySelectorAll('[data-delfam]').forEach(e=>e.onclick=async(ev)=>{
+    ev.stopPropagation();
+    if(!confirm('¿Borrar este modelo? No se puede deshacer.')) return;
     await sb.from('familias').delete().eq('id',e.dataset.delfam); await loadAll();});
+  document.querySelectorAll('[data-editfam]').forEach(e=>e.addEventListener('click',ev=>ev.stopPropagation()));
+  document.querySelectorAll('[data-modtog]').forEach(e=>e.onclick=(ev)=>{
+    if(ev.target.closest('[data-editfam],[data-delfam]')) return;
+    const id=e.dataset.modtog; state.modOpen[id]=!state.modOpen[id]; render();});
+  document.querySelectorAll('[data-cattog]').forEach(e=>e.onclick=()=>{
+    const k=e.dataset.cattog; state.catClosed[k]=!state.catClosed[k]; render();});
 
   const d = state.famDraft;
   if(!d) return;
+
+  // ----- Secciones colapsables + panel de costo en vivo -----
+  document.querySelectorAll('[data-sec]').forEach(e=>e.onclick=()=>{
+    const n=e.dataset.sec; state.famSecClosed[n]=!state.famSecClosed[n]; render();});
+  document.querySelectorAll('[data-pv]').forEach(e=>e.onchange=()=>{
+    state.preview=state.preview||{}; state.preview[e.dataset.pv]=+e.value||0; render();});
   d.receta_fija = d.receta_fija||{fondo:{},kits:[],sueltos:[]};
   d.receta_fija.kits = d.receta_fija.kits||[];
   d.receta_fija.sueltos = d.receta_fija.sueltos||[];

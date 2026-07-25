@@ -150,17 +150,40 @@
   align-items:center;margin-top:12px;padding-top:12px;border-top:1px solid var(--line2)}
 
 /* Filas tipo tabla: colores e insumos alineados y compactos */
-.mod-fab .fam-color-row{display:grid;grid-template-columns:1.1fr 1.6fr 1.6fr 30px;
+.mod-fab .fam-color-row{display:grid;grid-template-columns:1fr 1.5fr 1.5fr 78px 30px;
   gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line2)}
 .mod-fab .fam-suelto-row{display:grid;grid-template-columns:1fr 92px 30px;
   gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line2)}
 .mod-fab .fam-color-row input,.mod-fab .fam-color-row select,
 .mod-fab .fam-suelto-row input,.mod-fab .fam-suelto-row select{margin:0}
+.mod-fab .fam-color-cost{text-align:right;font-weight:650;font-variant-numeric:tabular-nums;
+  color:var(--ink);font-size:var(--t-md)}
 .mod-fab .fam-row-head{display:grid;gap:8px;font-size:var(--t-xs);text-transform:uppercase;
   letter-spacing:.03em;color:var(--mut);font-weight:700;padding:0 0 6px;margin-bottom:2px;
   border-bottom:1px solid var(--line)}
-.mod-fab .fam-row-head.cols{grid-template-columns:1.1fr 1.6fr 1.6fr 30px}
+.mod-fab .fam-row-head.cols{grid-template-columns:1fr 1.5fr 1.5fr 78px 30px}
 .mod-fab .fam-row-head.sueltos{grid-template-columns:1fr 92px 30px}
+
+/* Grilla de medidas (tabla editable tipo ingeniería) */
+.mod-fab .med-grid-wrap{overflow-x:auto;border:1px solid var(--line2);border-radius:var(--r-sm);margin-top:4px}
+.mod-fab .med-grid{width:100%;min-width:600px;border-collapse:collapse}
+.mod-fab .med-grid th{font-size:var(--t-xs);text-transform:uppercase;letter-spacing:.02em;
+  color:var(--mut);font-weight:700;padding:8px 8px;background:#F8FAFD;
+  border-bottom:1px solid var(--line2);white-space:nowrap;text-align:right}
+.mod-fab .med-grid th:first-child{text-align:left}
+.mod-fab .med-grid td{padding:4px 6px;border-bottom:1px solid var(--line2)}
+.mod-fab .med-grid tbody tr:last-child td{border-bottom:none}
+.mod-fab .med-grid tbody tr:hover{background:#FBFCFE}
+.mod-fab .gcell{width:70px;text-align:right;padding:6px 8px;margin:0;
+  border:1px solid transparent;background:transparent;border-radius:var(--r-sm)}
+.mod-fab .gcell:hover{border-color:var(--line)}
+.mod-fab .gcell:focus{border-color:var(--blue);background:#fff;box-shadow:0 0 0 3px rgba(37,99,235,.1)}
+.mod-fab .gcell.w-med{width:62px;font-weight:650;text-align:left}
+.mod-fab .med-grid .gact{display:flex;gap:4px;justify-content:flex-end;white-space:nowrap}
+.mod-fab .med-grid .iconbtn{width:26px;height:26px;border:1px solid var(--line);border-radius:var(--r-sm);
+  background:#fff;color:var(--sec);cursor:pointer;font-size:12px;line-height:1}
+.mod-fab .med-grid .iconbtn:hover{background:var(--gray-l);color:var(--ink)}
+.mod-fab .med-grid .iconbtn.danger:hover{color:var(--red);border-color:#F0B4B4}
 .mod-fab .fam-block-lbl{font-size:var(--t-sm);font-weight:700;color:var(--ink);margin:14px 0 6px}
 .mod-fab .fam-block-lbl:first-child{margin-top:0}
 .mod-fab .fam-role-chip{

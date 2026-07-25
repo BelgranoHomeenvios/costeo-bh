@@ -788,6 +788,40 @@ function famCostPanel(d){
     </div></div>`;
 }
 
+/* ---- Grilla de medidas (tabla editable tipo ingeniería) ---- */
+function medidasGrid(d){
+  const roles = (d.roles||[]).map(rid=>({rid, nom:(state.roles.find(x=>x.id===rid)||{}).nombre||'?'}));
+  if(!(d.medidas||[]).length)
+    return '<div class="helper" style="margin:0 0 8px;">Todavía no cargaste ninguna medida. Tocá “+ Agregar medida”.</div>';
+  const cel = (ix,key,val,step)=>`<td><input class="gcell" data-row="${ix}" data-gmf="${key}"
+      type="number" step="${step||'0.01'}" value="${(val!==''&&val!==undefined&&val!==null)?val:''}"></td>`;
+  const rows = d.medidas.map((m,ix)=>`<tr>
+      <td><input class="gcell w-med" data-row="${ix}" data-gmf="ancho" type="number" step="1" value="${m.ancho||''}"></td>
+      ${cel(ix,'alto',m.alto,'1')}${cel(ix,'prof',m.prof,'1')}
+      ${cel(ix,'carcasa_m2',m.carcasa_m2)}${cel(ix,'puerta_m2',m.puerta_m2)}
+      ${cel(ix,'fondo_m2',m.fondo_m2)}${cel(ix,'carcasa_tapacanto_m',m.carcasa_tapacanto_m)}
+      ${roles.map(r=>`<td><input class="gcell" data-row="${ix}" data-gmh="${r.rid}" type="number" step="0.5"
+          value="${(m.horas&&m.horas[r.rid])||''}"></td>`).join('')}
+      <td class="gact">
+        <button class="iconbtn" data-gmdup="${ix}" title="Duplicar">⧉</button>
+        <button class="iconbtn danger" data-gmrm="${ix}" title="Eliminar">✕</button></td>
+    </tr>`).join('');
+  return `<div class="med-grid-wrap"><table class="med-grid"><thead><tr>
+      <th>Medida</th><th>Alto</th><th>Prof</th><th>Carcasa m²</th><th>Puerta m²</th>
+      <th>Fondo m²</th><th>Filo m</th>${roles.map(r=>`<th>${esc(r.nom)} h</th>`).join('')}<th></th>
+    </tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
+/* Refresca SOLO el panel de costo (sin re-render total) para no perder
+   el foco mientras se tipea en la grilla de medidas. */
+function refrescarPanel(){
+  const host = document.getElementById('fam-side');
+  if(!host || !state.famDraft) return;
+  host.innerHTML = famCostPanel(state.famDraft);
+  host.querySelectorAll('[data-pv]').forEach(e=>e.onchange=()=>{
+    state.preview = state.preview||{}; state.preview[e.dataset.pv] = +e.value||0; refrescarPanel(); });
+}
+
 /* ---- Editor de familia ---- */
 function familiaEditor(){
   const d = state.famDraft;
@@ -796,15 +830,18 @@ function familiaEditor(){
   const rf = d.receta_fija||{};
   const combos = combosPuertas((d.puerta_tipos||[]).length, d.n_puertas||0);
 
-  const coloresRows = (d.colores||[]).map((c,ix)=>`
-    <div class="fam-color-row">
+  const coloresRows = (d.colores||[]).map((c,ix)=>{
+    const placa = state.materiales.find(m=>m.id===c.placa_id);
+    const pm2 = placa ? costPerM2(placa) : 0;
+    return `<div class="fam-color-row">
       <input data-fc="${ix}" data-f="label" value="${esc(c.label)}" placeholder="ej: Mel Blanco">
       <select data-fc="${ix}" data-f="placa_id"><option value="">— placa cuerpo —</option>
         ${placas.map(m=>`<option value="${m.id}" ${m.id===c.placa_id?'selected':''}>${esc(m.nombre)}</option>`).join('')}</select>
       <select data-fc="${ix}" data-f="tapacanto_id"><option value="">— tapacanto —</option>
         ${state.insumos.map(i=>`<option value="${i.id}" ${i.id===c.tapacanto_id?'selected':''}>${esc(i.nombre)}</option>`).join('')}</select>
+      <div class="fam-color-cost">${pm2?('$'+fmt(pm2)):'—'}</div>
       <button class="icon-btn" data-rmfc="${ix}" ${(d.colores.length===1)?'style="visibility:hidden;"':''}>✕</button>
-    </div>`).join('');
+    </div>`;}).join('');
 
   const tiposRows = (d.puerta_tipos||[]).map((t,ix)=>t.hereda
     ? `<div class="fam-tipo-row"><span class="chip chip-static">${esc(t.label)} <span class="pill">toma el color del cuerpo</span></span>
@@ -846,7 +883,7 @@ function familiaEditor(){
 
   const s2 = fsec(2,'Colores de cuerpo','Cada color = una placa + su tapacanto',
     `${(d.colores||[]).length} color${(d.colores||[]).length!==1?'es':''}`,
-    `<div class="fam-row-head cols"><span>Color</span><span>Placa (cuerpo)</span><span>Tapacanto</span><span></span></div>
+    `<div class="fam-row-head cols"><span>Color</span><span>Placa (cuerpo)</span><span>Tapacanto</span><span style="text-align:right">$/m²</span><span></span></div>
      ${coloresRows}<button class="add-line-btn" data-addfc>+ Agregar color</button>`);
 
   const s3 = fsec(3,'Tipos de puerta','La de placa toma el color del cuerpo',
@@ -881,12 +918,11 @@ function familiaEditor(){
     `<div class="helper">Los roles que marques arman los campos de horas en cada medida.</div>
       <div class="fam-roles-pick">${roles.map(r=>`<label class="fam-role-chip"><input type="checkbox" data-famrole="${r.id}" ${(d.roles||[]).includes(r.id)?'checked':''}> ${esc(r.nombre)}</label>`).join('')||'<span style="color:var(--mut);">Cargá roles en Mano de obra primero.</span>'}</div>`);
 
-  const s6 = fsec(6,'Medidas','Cada medida × color × puerta genera una variante',
+  const s6 = fsec(6,'Medidas','m² por parte + horas de carpintería (cada fila es una medida)',
     `${(d.medidas||[]).length} medida(s)`,
-    `<div class="helper">Cargá una medida completa y después duplicala para las siguientes — solo cambiás lo que difiere.</div>
-      ${medRows}
-      <button class="add-line-btn" data-addmed style="margin-top:8px;">+ Agregar medida</button>
-      ${state.medIx!==null && state.medIx!==undefined ? medidaFicha(d) : ''}`);
+    `<div class="helper">Cargá cada medida en su fila. Duplicá una fila para la siguiente y cambiá solo lo que difiere.</div>
+      ${medidasGrid(d)}
+      <button class="add-line-btn" data-addmed style="margin-top:8px;">+ Agregar medida</button>`);
 
   const s7 = fsec(7,'Observaciones','Notas internas del modelo','',
     `<input id="fam-notas" value="${esc(d.notas||'')}" placeholder="observaciones generales de este modelo">`);
@@ -903,7 +939,7 @@ function familiaEditor(){
 
     <div class="fam-grid">
       <div class="fam-secs">${s1}${s2}${s3}${s4}${s5}${s6}${s7}</div>
-      <div class="fam-side">${famCostPanel(d)}</div>
+      <div class="fam-side" id="fam-side">${famCostPanel(d)}</div>
     </div>
 
     <div class="fam-editor-foot">
@@ -1388,31 +1424,21 @@ function bindFamilias(){
     else d.roles=d.roles.filter(x=>x!==rid);
     render();});
 
-  // ----- Medidas -----
+  // ----- Medidas (grilla editable) -----
   const amed = document.querySelector('[data-addmed]');
-  if(amed) amed.onclick = ()=>{ d.medidas.push(nuevaMedida()); state.medIx=d.medidas.length-1; render(); };
-  document.querySelectorAll('[data-meded]').forEach(e=>e.onclick=()=>{ state.medIx=+e.dataset.meded; render(); });
-  document.querySelectorAll('[data-meddup]').forEach(e=>e.onclick=()=>{
-    const copia = nuevaMedida(d.medidas[+e.dataset.meddup]); copia._dup=true;
-    d.medidas.push(copia); state.medIx=d.medidas.length-1; render();});
-  document.querySelectorAll('[data-medrm]').forEach(e=>e.onclick=()=>{
+  if(amed) amed.onclick = ()=>{ d.medidas.push(nuevaMedida()); render(); };
+  document.querySelectorAll('[data-gmf]').forEach(e=>e.onchange=()=>{
+    const ix=+e.dataset.row, k=e.dataset.gmf, v=parseFloat(e.value);
+    d.medidas[ix][k] = isNaN(v) ? '' : v; refrescarPanel();});
+  document.querySelectorAll('[data-gmh]').forEach(e=>e.onchange=()=>{
+    const ix=+e.dataset.row, rid=e.dataset.gmh;
+    d.medidas[ix].horas = d.medidas[ix].horas||{};
+    d.medidas[ix].horas[rid] = parseFloat(e.value)||0; refrescarPanel();});
+  document.querySelectorAll('[data-gmdup]').forEach(e=>e.onclick=()=>{
+    d.medidas.push(JSON.parse(JSON.stringify(d.medidas[+e.dataset.gmdup]))); render();});
+  document.querySelectorAll('[data-gmrm]').forEach(e=>e.onclick=()=>{
     if(!confirm('¿Borrar esta medida?')) return;
-    d.medidas.splice(+e.dataset.medrm,1); state.medIx=null; render();});
-
-  // ----- Ficha de medida abierta -----
-  if(state.medIx!==null && state.medIx!==undefined && d.medidas[state.medIx]){
-    const m = d.medidas[state.medIx];
-    document.querySelectorAll('[data-mf]').forEach(e=>e.onchange=()=>{
-      m[e.dataset.mf] = parseFloat(e.value); if(isNaN(m[e.dataset.mf])) m[e.dataset.mf]='';});
-    document.querySelectorAll('[data-mh]').forEach(e=>e.onchange=()=>{
-      m.horas=m.horas||{}; m.horas[e.dataset.mh]=parseFloat(e.value)||0;});
-    const mn = document.querySelector('[data-mnotas]');
-    if(mn) mn.onchange = ()=>{ m.notas = mn.value; };
-    const mok = document.querySelector('[data-medok]');
-    if(mok) mok.onclick = ()=>{ delete m._dup; state.medIx=null; render(); };
-    const mc = document.querySelector('[data-medcancel]');
-    if(mc) mc.onclick = ()=>{ state.medIx=null; render(); };
-  }
+    d.medidas.splice(+e.dataset.gmrm,1); render();});
 
   // ----- Guardar -----
   const sv = document.querySelector('[data-savefam]');

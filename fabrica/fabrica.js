@@ -36,7 +36,7 @@ let state = {
   modVarsAll:{},            // qué modelos muestran TODAS sus variantes
   modCat:'todos',           // tab de categoría activa en la lista
   catClosed:{},             // (legacy) categorías cerradas en la lista
-  famSecClosed:{},          // qué secciones del editor están cerradas
+  famOpen:1,                // qué módulo del editor está abierto (uno por vez)
   preview:null              // variante que muestra el panel de costo en vivo
 };
 
@@ -724,7 +724,7 @@ function medidaFicha(d){
 
 /* ---- Sección colapsable del editor ---- */
 function fsec(n, title, sub, meta, inner){
-  const abierta = !state.famSecClosed[n];
+  const abierta = state.famOpen === n;
   return `<section class="fsec ${abierta?'open':''}">
     <div class="fsec-h" data-sec="${n}">
       <div class="fsec-n">${n}</div>
@@ -1304,10 +1304,10 @@ function bindLogin(){
 function bindFamilias(){
   // ----- Listado -----
   const nf = document.querySelector('[data-newfam]');
-  if(nf) nf.onclick = ()=>{ state.famDraft = nuevaFamiliaDraft(); state.medIx = null; render(); };
+  if(nf) nf.onclick = ()=>{ state.famDraft = nuevaFamiliaDraft(); state.medIx = null; state.famOpen = 1; render(); };
   document.querySelectorAll('[data-editfam]').forEach(e=>e.onclick=()=>{
     const f = state.familias.find(x=>x.id===e.dataset.editfam);
-    if(f){ state.famDraft = JSON.parse(JSON.stringify(f));
+    if(f){ state.famDraft = JSON.parse(JSON.stringify(f)); state.famOpen = 1;
            state.famDraft.receta_fija = state.famDraft.receta_fija||{fondo:{},kits:[],sueltos:[]};
            state.famDraft.receta_fija.kits = state.famDraft.receta_fija.kits||[];
            state.famDraft.receta_fija.sueltos = state.famDraft.receta_fija.sueltos||[];
@@ -1330,9 +1330,9 @@ function bindFamilias(){
   const d = state.famDraft;
   if(!d) return;
 
-  // ----- Secciones colapsables + panel de costo en vivo -----
+  // ----- Módulos acordeón (uno abierto por vez) + panel de costo en vivo -----
   document.querySelectorAll('[data-sec]').forEach(e=>e.onclick=()=>{
-    const n=e.dataset.sec; state.famSecClosed[n]=!state.famSecClosed[n]; render();});
+    const n=+e.dataset.sec; state.famOpen = (state.famOpen===n) ? null : n; render();});
   document.querySelectorAll('[data-pv]').forEach(e=>e.onchange=()=>{
     state.preview=state.preview||{}; state.preview[e.dataset.pv]=+e.value||0; render();});
   d.receta_fija = d.receta_fija||{fondo:{},kits:[],sueltos:[]};

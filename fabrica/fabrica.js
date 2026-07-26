@@ -145,8 +145,46 @@ async function loadAll(){
   state.productos  = pro.data||[];  state.historial  = his.data||[];
   state.familias   = fam.data||[];
   if(cfg.data) state.config = cfg.data;
+  try{ await cargarPreciosTN(); }catch(e){ state.tnMap = state.tnMap||{}; }
   state.ready = true; render();
 }
+
+/* Trae los precios de venta (Tienda Nube) de Proveedores para los modelos
+   cargados, y arma un mapa modelo|ancho|alto|espejos|B/C → precio_lista.
+   Sirve para mostrar precio de venta y margen en Fábrica. */
+async function cargarPreciosTN(){
+  state.tnMap = {}; state.tnDescuento = 0.35;
+  const fams = state.familias||[];
+  if(!fams.length) return;
+  const rent = sb.schema('rentabilidad');
+  try{ const {data:cf} = await rent.from('config').select('*').limit(1);
+       const c = (cf&&cf[0])||{}; if(c.descuento!=null) state.tnDescuento = Number(c.descuento)||0.35; }catch(e){}
+  const esc2 = w => String(w).replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+  const catWords = (state.categorias||[]).map(c=>String(c.nombre||'').toUpperCase().replace(/S$/,'')).filter(Boolean);
+  const stripCat = m => { let s=String(m||'').toUpperCase().trim();
+    for(const w of catWords){ const re=new RegExp('^'+esc2(w)+'S?\\b\\s*'); if(re.test(s)){ s=s.replace(re,''); break; } }
+    return s.trim(); };
+  const famNames = new Set(fams.map(f=>String(f.nombre||'').toUpperCase().trim()));
+  const pats = fams.map(f=>'modelo.ilike.%'+String(f.nombre||'').toUpperCase().replace(/[%,()]/g,'')+'%').join(',');
+  let prods=[];
+  try{ const {data} = await rent.from('productos').select('modelo,medida,variantes,precio_lista').or(pats); prods=data||[]; }catch(e){ return; }
+  const parseMed = s => { const m=String(s||'').replace(/mts?/ig,'').split(/x/i);
+    return {a:Math.round(parseFloat((m[0]||'').replace(',','.'))*100)||0, al:Math.round(parseFloat((m[1]||'').replace(',','.'))*100)||0}; };
+  const espN = s=>{s=String(s||'').toUpperCase();if(s.includes('SIN'))return 0;if(s.includes('2'))return 2;if(s.includes('1'))return 1;return 0;};
+  prods.forEach(p=>{
+    const mod = stripCat(p.modelo); if(!famNames.has(mod)) return;
+    const v=p.variantes||{}; const {a,al}=parseMed(v.MEDIDAS||v.MEDIDA||p.medida);
+    const esp=espN(v.ESPEJOS||v.ESPEJO);
+    const melam=String(v['TIPO DE MELAMINA']||'').toUpperCase();
+    const bcs = melam.includes('BLANCO')?['B']:(melam?['C']:['B','C']);
+    const precio=Number(p.precio_lista)||0;
+    bcs.forEach(bc=>{ state.tnMap[`${mod}|${a}|${al}|${esp}|${bc}`]=precio; });
+  });
+}
+const precioTN = (f, m, colorLabel, esp) => {
+  const bc = /blanco/i.test(colorLabel||'') ? 'B' : 'C';
+  return (state.tnMap||{})[`${String(f.nombre||'').toUpperCase()}|${m.ancho}|${m.alto}|${esp}|${bc}`] || 0;
+};
 
 async function save(tabla, id, data){
   try{
@@ -657,13 +695,22 @@ function filaModelo(f){
       const desde = costos.length?Math.min(...costos):0;
       let tabla = '';
       if(medOpen){
+        const espIx = (f.puerta_tipos||[]).findIndex(t=>/espejo/i.test(t.label||''));
+        const desc = state.tnDescuento||0.35;
         const rows = [];
         (f.colores||[]).forEach((col,ci)=>combos.forEach(cmb=>{
+          const costo = costoVariante(f,m,ci,cmb).total;
+          const esp = espIx>=0?(cmb[espIx]||0):0;
+          const precio = precioTN(f,m,col.label,esp);
+          const efe = precio*(1-desc);
+          const margen = efe>0 ? (efe-costo)/efe : 0;
           rows.push(`<tr><td>${esc(col.label||'—')}</td><td>${esc(comboLabel(f,cmb))}</td>
-            <td class="num">$${fmt(costoVariante(f,m,ci,cmb).total)}</td></tr>`);
+            <td class="num">$${fmt(costo)}</td>
+            <td class="num">${precio?('$'+fmt(precio)):'<span style="color:var(--mut)">—</span>'}</td>
+            <td class="num" style="${efe>0?('font-weight:650;color:'+(margen<0.30?'var(--red)':(margen<0.45?'var(--amber)':'var(--green)'))):''}">${efe>0?(margen*100).toFixed(0)+'%':'—'}</td></tr>`);
         }));
         tabla = `<table class="mini vars"><thead><tr><th>Color</th><th>Puertas</th>
-            <th class="num">Costo directo</th></tr></thead><tbody>${rows.join('')}</tbody></table>`;
+            <th class="num">Costo</th><th class="num">Precio venta</th><th class="num">Margen</th></tr></thead><tbody>${rows.join('')}</tbody></table>`;
       }
       return `<div class="med-sub ${medOpen?'open':''}">
         <div class="med-sub-h" data-medtog="${medKey}">

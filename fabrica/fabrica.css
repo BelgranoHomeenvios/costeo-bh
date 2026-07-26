@@ -196,6 +196,7 @@
   font-size:11px;font-weight:700;cursor:pointer;color:var(--sec)}
 .mod-fab .tgl.on{background:var(--green-l);color:var(--green);border-color:#BBE5C6}
 .mod-fab .tgl.off{background:var(--amber-l);color:var(--amber);border-color:#F0DCA8}
+.mod-fab .sub-mat{font-size:var(--t-sm);color:var(--mut);font-weight:500;margin-top:1px}
 .mod-fab .med-grid.herr{min-width:520px}
 .mod-fab .med-grid.herr th:first-child{min-width:200px}
 .mod-fab .med-grid .gsel{width:100%;min-width:190px;margin:0;padding:6px 8px;text-align:left}
@@ -377,8 +378,11 @@
 .mod-fab .fam-grid{display:grid;grid-template-columns:1fr 330px;gap:18px;align-items:start}
 @media(max-width:1080px){.mod-fab .fam-grid{grid-template-columns:1fr}}
 .mod-fab .fam-secs{display:flex;flex-direction:column;gap:12px;min-width:0}
-.mod-fab .fam-side{position:sticky;top:16px}
+.mod-fab .fam-side{position:sticky;top:70px;align-self:start}
 @media(max-width:1080px){.mod-fab .fam-side{position:static}}
+/* El contenedor de la app tiene overflow-x:auto que "atrapa" el sticky;
+   sólo en el editor lo liberamos para que el panel de costo acompañe el scroll. */
+.content:has(.fam-editor){overflow:visible}
 
 /* ---- Sección colapsable ---- */
 .mod-fab .fsec{background:var(--card);border:1px solid var(--line);border-radius:var(--r);

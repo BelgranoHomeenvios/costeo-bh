@@ -614,13 +614,13 @@ async function volcarCostos(fam, silencioso){
     for(const k of keys){ if(sig.has(k)){ updates.push({id:p.id, costo:sig.get(k)}); break; } }
   });
 
-  let ok = 0;
+  let ok = 0, primerError = null;
   for(const u of updates){
     const {error} = await sb.schema('rentabilidad').from('productos')
       .update({costo_fabrica:u.costo}).eq('id', u.id);
-    if(!error) ok++;
+    if(error){ if(!primerError) primerError = error; } else ok++;
   }
-  return {matched:ok, total:prods.length};
+  return {matched:ok, total:prods.length, candidatos:updates.length, error:primerError};
 }
 
 /* ---- Listado de modelos (KPIs + tabs + variantes con costo) ---- */
@@ -1487,11 +1487,16 @@ function bindFamilias(){
   if(vinc) vinc.onclick = async()=>{
     if(!confirm('Volcar el costo de todos los modelos cargados a Proveedores?\n(Actualiza costo_fabrica en los productos que coinciden.)')) return;
     vinc.disabled = true; vinc.textContent = 'Vinculando…';
-    let tot = 0;
-    for(const f of state.familias){ try{ const r = await volcarCostos(f, true); tot += r.matched; }catch(e){} }
+    let tot = 0, cand = 0, err = null;
+    for(const f of state.familias){ try{ const r = await volcarCostos(f, true); tot += r.matched; cand += (r.candidatos||0); if(r.error&&!err) err=r.error; }catch(e){ if(!err) err=e; } }
     vinc.disabled = false; vinc.textContent = '🔗 Vincular a Proveedores';
-    if(typeof UI!=='undefined' && UI.toast) UI.toast(`${tot} variantes vinculadas en Proveedores`, 'ok');
-    else alert(tot+' variantes vinculadas en Proveedores.');
+    if(err && tot===0){
+      alert('No se pudo escribir el costo en Proveedores:\n'+(err.message||err)+
+        (/costo_fabrica/.test(err.message||'')||/column/.test(err.message||'')
+          ? '\n\n👉 Falta correr en Supabase:\nalter table rentabilidad.productos add column if not exists costo_fabrica numeric;' : ''));
+    } else if(typeof UI!=='undefined' && UI.toast){
+      UI.toast(`${tot} variantes vinculadas en Proveedores`+(cand>tot?` (${cand-tot} con error)`:''), tot?'ok':'err');
+    } else alert(tot+' variantes vinculadas en Proveedores.');
   };
   document.querySelectorAll('[data-modmore]').forEach(e=>e.onclick=(ev)=>{
     ev.stopPropagation(); state.modVarsAll[e.dataset.modmore]=true; render();});

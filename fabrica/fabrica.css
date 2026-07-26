@@ -184,6 +184,25 @@
   background:#fff;color:var(--sec);cursor:pointer;font-size:12px;line-height:1}
 .mod-fab .med-grid .iconbtn:hover{background:var(--gray-l);color:var(--ink)}
 .mod-fab .med-grid .iconbtn.danger:hover{color:var(--red);border-color:#F0B4B4}
+
+/* Herrajes por medida */
+.mod-fab .medbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#F8FAFD;
+  border:1px solid var(--line2);border-radius:9px;padding:10px 12px;margin-bottom:10px}
+.mod-fab .medbar-lb{font-size:var(--t-xs);font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--sec)}
+.mod-fab .medbar select{width:auto;min-width:110px;font-weight:700;padding:6px 9px}
+.mod-fab .medbar-h{color:var(--mut);font-size:var(--t-sm)}
+.mod-fab .medbar .btn-sm{margin-left:auto}
+.mod-fab .med-grid.herr{min-width:520px}
+.mod-fab .med-grid.herr th:first-child{min-width:200px}
+.mod-fab .med-grid .gsel{width:100%;min-width:190px;margin:0;padding:6px 8px;text-align:left}
+.mod-fab .chg-tag{display:inline-block;margin-left:8px;font-size:10px;font-weight:700;
+  color:var(--amber);background:var(--amber-l);padding:1px 7px;border-radius:999px;vertical-align:middle}
+
+/* Módulos futuros (deshabilitados) */
+.mod-fab .fsec-fut{opacity:.65}
+.mod-fab .fsec-fut .fsec-h{cursor:default}
+.mod-fab .fsec-fut .fsec-h:hover{background:var(--card)}
+.mod-fab .fsec-fut .fsec-n{background:var(--gray-l);color:var(--mut)}
 .mod-fab .fam-block-lbl{font-size:var(--t-sm);font-weight:700;color:var(--ink);margin:14px 0 6px}
 .mod-fab .fam-block-lbl:first-child{margin-top:0}
 .mod-fab .fam-role-chip{

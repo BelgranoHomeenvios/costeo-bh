@@ -516,7 +516,12 @@ function costoVariante(fam, med, colorIx, counts){
   let herrajes = 0;
   const kitsList = rf.kits && rf.kits.length ? rf.kits : (rf.kit_id ? [{kit_id:rf.kit_id,cantidad:1}] : []);
   kitsList.forEach(kl=>{ const k=state.kits.find(x=>x.id===kl.kit_id); if(k) herrajes += kitCost(k)*(kl.cantidad||1); });
-  (rf.sueltos||[]).forEach(s=>{ const i=state.insumos.find(x=>x.id===s.insumo_id); if(i) herrajes += costPerUnit(i)*(s.cantidad||0); });
+  // Sueltos: la cantidad puede ser por medida (med.cant[insumo_id]); si no, usa la default del suelto.
+  (rf.sueltos||[]).forEach(s=>{
+    const i=state.insumos.find(x=>x.id===s.insumo_id); if(!i) return;
+    const cant = (med && med.cant && med.cant[s.insumo_id]!==undefined) ? med.cant[s.insumo_id] : (s.cantidad||0);
+    herrajes += costPerUnit(i)*(cant||0);
+  });
 
   // Mano de obra
   const carga = state.config.carga_laboral_pct||0;
@@ -647,7 +652,7 @@ function nuevaFamiliaDraft(){
 function nuevaMedida(base){
   if(base) return JSON.parse(JSON.stringify({...base, ancho:'', notas:''}));
   return {ancho:'',alto:'',prof:60,carcasa_m2:'',carcasa_tapacanto_m:'',
-          puerta_m2:'',puerta_tapacanto_m:'',fondo_m2:'',horas:{},otros:0,notas:''};
+          puerta_m2:'',puerta_tapacanto_m:'',fondo_m2:'',horas:{},cant:{},otros:0,notas:''};
 }
 
 /* ---- Filas auxiliares ---- */
@@ -813,13 +818,52 @@ function medidasGrid(d){
 }
 
 /* Refresca SOLO el panel de costo (sin re-render total) para no perder
-   el foco mientras se tipea en la grilla de medidas. */
+   el foco mientras se tipea en la grilla de medidas / herrajes. */
 function refrescarPanel(){
   const host = document.getElementById('fam-side');
   if(!host || !state.famDraft) return;
   host.innerHTML = famCostPanel(state.famDraft);
   host.querySelectorAll('[data-pv]').forEach(e=>e.onchange=()=>{
-    state.preview = state.preview||{}; state.preview[e.dataset.pv] = +e.value||0; refrescarPanel(); });
+    state.preview = state.preview||{}; state.preview[e.dataset.pv] = +e.value||0; render(); });
+}
+
+/* ---- Módulo Herrajes e insumos (cantidades por medida) ---- */
+function herrajesModulo(d){
+  const rf = d.receta_fija||{};
+  const meds = d.medidas||[];
+  const mi = Math.min((state.preview||{}).medIx||0, Math.max(0, meds.length-1));
+  const med = meds[mi];
+  const medSel = `<div class="medbar">
+      <span class="medbar-lb">Medida activa</span>
+      <select id="fam-med-activa">${meds.map((m,i)=>`<option value="${i}" ${i===mi?'selected':''}>${esc(m.ancho||'?')} × ${esc(m.alto||'?')}</option>`).join('')||'<option>— sin medidas —</option>'}</select>
+      <span class="medbar-h">cargás los herrajes de esta medida</span>
+      <button class="btn-sm" data-copiartodas>⧉ Copiar cantidades a todas</button>
+    </div>`;
+  const filas = (rf.sueltos||[]).map((s,ix)=>{
+    const i  = state.insumos.find(x=>x.id===s.insumo_id);
+    const cu = i ? costPerUnit(i) : 0;
+    const cant = (med && med.cant && med.cant[s.insumo_id]!==undefined) ? med.cant[s.insumo_id] : (s.cantidad||0);
+    const porMedida = meds.some(m=>m.cant && m.cant[s.insumo_id]!==undefined);
+    return `<tr>
+      <td><select class="gsel" data-fs="${ix}" data-f="insumo_id"><option value="">— insumo / herraje —</option>
+        ${state.insumos.map(x=>`<option value="${x.id}" ${x.id===s.insumo_id?'selected':''}>${esc(x.nombre)}</option>`).join('')}</select>
+        ${porMedida?'<span class="chg-tag">cambia por medida</span>':''}</td>
+      <td class="num"><input class="gcell" data-hcant="${ix}" type="number" step="0.01" value="${(cant!==''&&cant!==undefined)?cant:''}"></td>
+      <td class="num">${fmt(cu)}</td>
+      <td class="num" data-hsub="${ix}">$${fmt(cu*(cant||0))}</td>
+      <td class="num"><button class="iconbtn danger" data-rmfs="${ix}">✕</button></td>
+    </tr>`;
+  }).join('');
+  const tabla = `<div class="med-grid-wrap"><table class="med-grid herr">
+      <thead><tr><th>Ítem</th><th>Cant.</th><th>Costo unit.</th><th>Subtotal</th><th></th></tr></thead>
+      <tbody>${filas||'<tr><td colspan="5"><div class="helper" style="margin:0;padding:8px;">Sin herrajes. Agregá con el botón de abajo.</div></td></tr>'}</tbody></table></div>`;
+  return `${meds.length?medSel:'<div class="helper" style="margin:0 0 10px;">Primero cargá medidas en el módulo Medidas.</div>'}
+    ${tabla}
+    <button class="add-line-btn" data-addsuelto style="margin-top:8px;">+ Agregar herraje</button>
+    <div class="helper" style="margin-top:10px;">Los que no cambian (tornillos, pitutos) los cargás una vez y tocás <b>“copiar a todas”</b>. Los que cambian con la medida (el barral) los editás entrando a cada medida.</div>
+    <div class="fam-block-lbl" style="margin-top:16px">Combos de insumos <span style="color:var(--mut);font-weight:500;">(opcional, fijos)</span></div>
+    <div id="fam-kits">${kitsRows(d)}</div>
+    <button class="add-line-btn" data-addkit style="margin-top:6px;">+ Agregar combo</button>`;
 }
 
 /* ---- Editor de familia ---- */
@@ -862,33 +906,52 @@ function familiaEditor(){
       <button class="icon-btn" data-medrm="${ix}">✕</button>
     </div>`).join('') : '<div class="helper" style="margin:0;">Todavía no cargaste ninguna medida.</div>';
 
-  const catNombre = (state.categorias.find(c=>c.id===d.categoria_id)||{}).nombre||'Sin categoría';
+  const catNombre = (state.categorias.find(c=>c.id===d.categoria_id)||{}).nombre||'';
+  const esCama = /cama/i.test(catNombre);
+  const frenteLbl = esCama ? 'Frente / Respaldo' : 'Puertas';
 
-  const s1 = fsec(1,'Datos generales','Nombre, categoría, apertura y puertas del modelo',
-    `${esc(catNombre)} · ${esc(d.apertura||'')}`,
+  // 1 · Identidad
+  const s1 = fsec(1,'Identidad','Categoría y nombre del modelo',
+    `${esc(catNombre||'Sin categoría')} · ${esc(d.nombre||'—')}`,
     `<div class="row-2">
-        <div class="field"><label>Categoría</label><select id="fam-cat">
-          ${state.categorias.map(c=>`<option value="${c.id}" ${c.id===d.categoria_id?'selected':''}>${esc(c.nombre)}</option>`).join('')}
-        </select></div>
+        <div class="field"><label>Categoría</label>
+          <input id="fam-cat-txt" list="fam-cat-list" value="${esc(catNombre)}" placeholder="escribí o elegí una categoría…" autocomplete="off">
+          <datalist id="fam-cat-list">${state.categorias.map(c=>`<option value="${esc(c.nombre)}"></option>`).join('')}</datalist></div>
         <div class="field"><label>Nombre del modelo</label><input id="fam-nombre" value="${esc(d.nombre)}" placeholder="ej: Oliver"></div>
       </div>
-      <div class="row-2">
-        <div class="field"><label>Diseño / apertura</label><select id="fam-apertura">
+      <div class="helper">Podés <b>escribir</b> una categoría nueva o elegir una existente. La apertura y el nº de ${esCama?'frentes':'puertas'} están en el módulo <b>${frenteLbl}</b>.</div>`);
+
+  // 2 · Medidas (con roles de mano de obra foldeados acá)
+  const s2 = fsec(2,'Medidas','Cargás la medida y completás sus m² + horas, todo junto',
+    `${(d.medidas||[]).length} medida(s)`,
+    `<div class="fam-block-lbl">Roles de mano de obra <span style="color:var(--mut);font-weight:500;">(arman las columnas de horas)</span></div>
+      <div class="fam-roles-pick">${roles.map(r=>`<label class="fam-role-chip"><input type="checkbox" data-famrole="${r.id}" ${(d.roles||[]).includes(r.id)?'checked':''}> ${esc(r.nombre)}</label>`).join('')||'<span style="color:var(--mut);">Cargá roles en la pestaña “Mano de obra” primero.</span>'}</div>
+      <div class="fam-block-lbl" style="margin-top:14px">Medidas</div>
+      ${medidasGrid(d)}
+      <button class="add-line-btn" data-addmed style="margin-top:8px;">+ Agregar medida</button>`);
+
+  // 3 · Colores y terminación (+ fondo material fijo)
+  const s3 = fsec(3,'Colores y terminación','Color → placa → filo/tapacanto → $/m²',
+    `${(d.colores||[]).length} color${(d.colores||[]).length!==1?'es':''}`,
+    `<div class="fam-row-head cols"><span>Color</span><span>Placa (cuerpo)</span><span>Tapacanto</span><span style="text-align:right">$/m²</span><span></span></div>
+     ${coloresRows}<button class="add-line-btn" data-addfc>+ Agregar color</button>
+     <div class="fam-block-lbl" style="margin-top:16px">Fondo <span style="color:var(--mut);font-weight:500;">(material fijo)</span></div>
+     <select id="fam-fondo" style="max-width:420px"><option value="">— sin fondo —</option>
+        ${placas.map(m=>`<option value="${m.id}" ${m.id===(rf.fondo&&rf.fondo.material_id)?'selected':''}>${esc(m.nombre)}</option>`).join('')}</select>`);
+
+  // 4 · Puertas / Frente (apertura + nº + tipos)
+  const s4 = fsec(4, frenteLbl,'Apertura, cantidad y tipos que generan las variantes',
+    `${esc(d.apertura||'—')} · ${d.n_puertas||0} · ${(d.puerta_tipos||[]).length} tipo(s)`,
+    `<div class="row-2">
+        <div class="field"><label>Apertura</label><select id="fam-apertura">
           <option value="corrediza" ${d.apertura==='corrediza'?'selected':''}>Corrediza</option>
           <option value="abrir" ${d.apertura==='abrir'?'selected':''}>De abrir</option>
         </select></div>
-        <div class="field"><label>Puertas <span style="color:var(--mut);">(define el modelo)</span></label>
+        <div class="field"><label>Nº de ${esCama?'frentes':'puertas'}</label>
           <input id="fam-npuertas" type="number" min="0" max="6" value="${d.n_puertas}"></div>
-      </div>`);
-
-  const s2 = fsec(2,'Colores de cuerpo','Cada color = una placa + su tapacanto',
-    `${(d.colores||[]).length} color${(d.colores||[]).length!==1?'es':''}`,
-    `<div class="fam-row-head cols"><span>Color</span><span>Placa (cuerpo)</span><span>Tapacanto</span><span style="text-align:right">$/m²</span><span></span></div>
-     ${coloresRows}<button class="add-line-btn" data-addfc>+ Agregar color</button>`);
-
-  const s3 = fsec(3,'Tipos de puerta','La de placa toma el color del cuerpo',
-    `${(d.puerta_tipos||[]).length} tipo${(d.puerta_tipos||[]).length!==1?'s':''}`,
-    `${tiposRows}
+      </div>
+      <div class="fam-block-lbl">Tipos</div>
+      ${tiposRows}
       <div class="fam-tipo-new">
         <input id="fam-npt-label" placeholder="ej: Espejo">
         <select id="fam-npt-mat"><option value="">— material —</option>
@@ -901,44 +964,33 @@ function familiaEditor(){
         ${combos.map(c=>`<span class="chip chip-static">${esc(comboLabel(d,c))}</span>`).join(' ')}
       </div>`:''}`);
 
-  const s4 = fsec(4,'Materiales y herrajes fijos','Fondo, combos e insumos sueltos (no cambian con el color)',
-    `${((rf.sueltos||[]).length)+((rf.kits||[]).length)} ítem(s)`,
-    `<div class="field" style="max-width:420px"><label>Fondo (material)</label><select id="fam-fondo"><option value="">— sin fondo —</option>
-        ${placas.map(m=>`<option value="${m.id}" ${m.id===(rf.fondo&&rf.fondo.material_id)?'selected':''}>${esc(m.nombre)}</option>`).join('')}</select></div>
-      <div class="fam-block-lbl">Insumos y herrajes sueltos <span style="color:var(--mut);font-weight:500;">(correderas, pitutos, cola…)</span></div>
-      <div class="fam-row-head sueltos"><span>Insumo / herraje</span><span style="text-align:right">Cant.</span><span></span></div>
-      <div id="fam-sueltos">${sueltosRows(d)}</div>
-      <button class="add-line-btn" data-addsuelto style="margin-top:6px;">+ Agregar insumo / herraje</button>
-      <div class="fam-block-lbl">Combos de insumos <span style="color:var(--mut);font-weight:500;">(opcional)</span></div>
-      <div id="fam-kits">${kitsRows(d)}</div>
-      <button class="add-line-btn" data-addkit style="margin-top:6px;">+ Agregar combo</button>`);
+  // 5 · Herrajes e insumos (por medida)
+  const s5 = fsec(5,'Herrajes e insumos','Cantidades por medida — elegí la medida y editá',
+    `${(rf.sueltos||[]).length} ítem(s)`,
+    herrajesModulo(d));
 
-  const s5 = fsec(5,'Mano de obra','Roles que intervienen; las horas van en cada medida',
-    `${(d.roles||[]).length} rol(es)`,
-    `<div class="helper">Los roles que marques arman los campos de horas en cada medida.</div>
-      <div class="fam-roles-pick">${roles.map(r=>`<label class="fam-role-chip"><input type="checkbox" data-famrole="${r.id}" ${(d.roles||[]).includes(r.id)?'checked':''}> ${esc(r.nombre)}</label>`).join('')||'<span style="color:var(--mut);">Cargá roles en Mano de obra primero.</span>'}</div>`);
-
-  const s6 = fsec(6,'Medidas','m² por parte + horas de carpintería (cada fila es una medida)',
-    `${(d.medidas||[]).length} medida(s)`,
-    `<div class="helper">Cargá cada medida en su fila. Duplicá una fila para la siguiente y cambiá solo lo que difiere.</div>
-      ${medidasGrid(d)}
-      <button class="add-line-btn" data-addmed style="margin-top:8px;">+ Agregar medida</button>`);
-
-  const s7 = fsec(7,'Observaciones','Notas internas del modelo','',
+  // 6 · Observaciones
+  const s6 = fsec(6,'Observaciones','Notas internas del modelo','',
     `<input id="fam-notas" value="${esc(d.notas||'')}" placeholder="observaciones generales de este modelo">`);
+
+  // Módulos futuros (deshabilitados)
+  const futSec = (n,tit,desc)=>`<section class="fsec fsec-fut"><div class="fsec-h" style="cursor:default">
+      <div class="fsec-n">${n}</div><div class="fsec-tt"><div class="fsec-t">${tit}</div><div class="fsec-d">${desc}</div></div>
+      <div class="fsec-meta"><span class="pill">Próximamente</span></div></div></section>`;
+  const sFut = futSec(7,'Procesos externos','Laqueado, CNC, terceros…') + futSec(8,'Otros / Indirectos','Reglas y costos indirectos');
 
   return `<div class="fam-editor">
     <div class="fam-editor-head">
       <button class="icon-btn" data-famback>← Volver</button>
       <div style="flex:1;min-width:0;">
         <h1 class="page-title" style="margin:2px 0 0;">${esc(d.nombre)||(d.id?'Editar modelo':'Nuevo modelo')}</h1>
-        <div class="page-desc" style="margin:2px 0 0;">${esc(catNombre)} · ${esc(d.apertura||'')}${d.n_puertas?` · ${d.n_puertas} puertas`:''} · ${nVariantes(d)} variantes</div>
+        <div class="page-desc" style="margin:2px 0 0;">${esc(catNombre||'Sin categoría')} · ${esc(d.apertura||'')}${d.n_puertas?` · ${d.n_puertas} ${esCama?'frentes':'puertas'}`:''} · ${nVariantes(d)} variantes</div>
       </div>
       <button class="btn-primary" data-savefam>Guardar modelo</button>
     </div>
 
     <div class="fam-grid">
-      <div class="fam-secs">${s1}${s2}${s3}${s4}${s5}${s6}${s7}</div>
+      <div class="fam-secs">${s1}${s2}${s3}${s4}${s5}${s6}${sFut}</div>
       <div class="fam-side" id="fam-side">${famCostPanel(d)}</div>
     </div>
 
@@ -1379,7 +1431,16 @@ function bindFamilias(){
   if(back) back.onclick = ()=>{ if(confirm('¿Salir sin guardar? Se pierden los cambios no guardados.')){ state.famDraft=null; state.medIx=null; render(); } };
 
   const bindVal = (id,fn)=>{ const el=document.getElementById(id); if(el) el.onchange=()=>fn(el.value); };
-  bindVal('fam-cat', v=>d.categoria_id=v);
+  // Categoría escribible: si el texto coincide con una existente usa su id;
+  // si es nueva, la guarda en _catNueva y se crea al Guardar.
+  const ctx = document.getElementById('fam-cat-txt');
+  if(ctx) ctx.onchange = ()=>{
+    const nom = (ctx.value||'').trim();
+    const found = state.categorias.find(c=>(c.nombre||'').toLowerCase()===nom.toLowerCase());
+    if(found){ d.categoria_id=found.id; d._catNueva=null; }
+    else { d.categoria_id=null; d._catNueva=nom||null; }
+    render();
+  };
   bindVal('fam-nombre', v=>d.nombre=v);
   bindVal('fam-apertura', v=>d.apertura=v);
   bindVal('fam-notas', v=>d.notas=v);
@@ -1411,11 +1472,36 @@ function bindFamilias(){
   document.querySelectorAll('[data-rmfk]').forEach(e=>e.onclick=()=>{ d.receta_fija.kits.splice(+e.dataset.rmfk,1); render(); });
 
   const asu = document.querySelector('[data-addsuelto]');
-  if(asu) asu.onclick = ()=>{ d.receta_fija.sueltos.push({insumo_id:'',cantidad:''}); render(); };
+  if(asu) asu.onclick = ()=>{ d.receta_fija.sueltos.push({insumo_id:'',cantidad:1}); render(); };
   document.querySelectorAll('[data-fs]').forEach(e=>e.onchange=()=>{
     const ix=+e.dataset.fs, f=e.dataset.f;
-    d.receta_fija.sueltos[ix][f]= e.type==='number'?(parseFloat(e.value)||0):e.value;});
+    d.receta_fija.sueltos[ix][f]= e.type==='number'?(parseFloat(e.value)||0):e.value; render();});
   document.querySelectorAll('[data-rmfs]').forEach(e=>e.onclick=()=>{ d.receta_fija.sueltos.splice(+e.dataset.rmfs,1); render(); });
+
+  // ----- Herrajes por medida -----
+  const fma = document.getElementById('fam-med-activa');
+  if(fma) fma.onchange = ()=>{ state.preview=state.preview||{}; state.preview.medIx=+fma.value||0; render(); };
+  document.querySelectorAll('[data-hcant]').forEach(e=>e.onchange=()=>{
+    const ix=+e.dataset.hcant, s=d.receta_fija.sueltos[ix]; if(!s||!s.insumo_id) return;
+    const mi=(state.preview||{}).medIx||0, med=d.medidas[mi];
+    if(!med){ alert('Primero cargá una medida en el módulo Medidas.'); return; }
+    med.cant = med.cant||{};
+    const v=parseFloat(e.value); med.cant[s.insumo_id]=isNaN(v)?0:v;
+    const i=state.insumos.find(x=>x.id===s.insumo_id), cu=i?costPerUnit(i):0;
+    const cell=document.querySelector('[data-hsub="'+ix+'"]'); if(cell) cell.textContent='$'+fmt(cu*(med.cant[s.insumo_id]||0));
+    refrescarPanel();});
+  const ct = document.querySelector('[data-copiartodas]');
+  if(ct) ct.onclick = ()=>{
+    const mi=(state.preview||{}).medIx||0, med=d.medidas[mi];
+    if(!med){ alert('No hay medida activa.'); return; }
+    (d.receta_fija.sueltos||[]).forEach(s=>{
+      if(!s.insumo_id) return;
+      const eff=(med.cant&&med.cant[s.insumo_id]!==undefined)?med.cant[s.insumo_id]:(s.cantidad||0);
+      s.cantidad=eff;
+      (d.medidas||[]).forEach(m=>{ if(m.cant) delete m.cant[s.insumo_id]; });
+    });
+    UI.toast ? UI.toast('Cantidades copiadas a todas las medidas','ok') : alert('Cantidades copiadas a todas las medidas.');
+    render();};
 
   // ----- Roles -----
   document.querySelectorAll('[data-famrole]').forEach(e=>e.onchange=()=>{
@@ -1444,16 +1530,29 @@ function bindFamilias(){
   const sv = document.querySelector('[data-savefam]');
   if(sv) sv.onclick = async()=>{
     d.nombre=(document.getElementById('fam-nombre').value||'').trim();
-    d.categoria_id=document.getElementById('fam-cat').value||null;
-    d.apertura=document.getElementById('fam-apertura').value;
-    d.n_puertas=+document.getElementById('fam-npuertas').value||0;
-    d.receta_fija.fondo={material_id:document.getElementById('fam-fondo').value||''};
+    if(!d.nombre){ alert('Poné un nombre de modelo.'); return; }
+    // Categoría: texto → id (crea la categoría si es nueva)
+    const catNom=((document.getElementById('fam-cat-txt')||{}).value||'').trim();
+    let catId=null;
+    if(catNom){
+      const found=state.categorias.find(c=>(c.nombre||'').toLowerCase()===catNom.toLowerCase());
+      if(found) catId=found.id;
+      else{
+        try{
+          const {data,error}=await sb.from('categorias').insert({nombre:catNom,horas:{}}).select().single();
+          if(error) throw error; catId=data.id;
+        }catch(err){ alert('No pude crear la categoría “'+catNom+'”: '+(err.message||err)); return; }
+      }
+    }
+    d.categoria_id=catId;
+    const ap=document.getElementById('fam-apertura'); if(ap) d.apertura=ap.value;
+    const np=document.getElementById('fam-npuertas'); if(np) d.n_puertas=+np.value||0;
+    const fo=document.getElementById('fam-fondo'); if(fo) d.receta_fija.fondo={material_id:fo.value||''};
     const nt=document.getElementById('fam-notas'); if(nt) d.notas=nt.value;
     d.receta_fija.kits=(d.receta_fija.kits||[]).filter(k=>k.kit_id);
     d.receta_fija.sueltos=(d.receta_fija.sueltos||[]).filter(s=>s.insumo_id);
     delete d.receta_fija.kit_id;
     d.medidas=(d.medidas||[]).map(m=>{ const c={...m}; delete c._dup; return c; });
-    if(!d.nombre){ alert('Poné un nombre de familia.'); return; }
     const payload={nombre:d.nombre, categoria_id:d.categoria_id||null, apertura:d.apertura,
       n_puertas:d.n_puertas, colores:d.colores, puerta_tipos:d.puerta_tipos,
       receta_fija:d.receta_fija, roles:d.roles, medidas:d.medidas, notas:d.notas||''};

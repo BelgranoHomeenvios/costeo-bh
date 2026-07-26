@@ -706,11 +706,11 @@ function filaModelo(f){
           const margen = efe>0 ? (efe-costo)/efe : 0;
           rows.push(`<tr><td>${esc(col.label||'—')}</td><td>${esc(comboLabel(f,cmb))}</td>
             <td class="num">$${fmt(costo)}</td>
-            <td class="num">${precio?('$'+fmt(precio)):'<span style="color:var(--mut)">—</span>'}</td>
+            <td class="num">${efe>0?('$'+fmt(efe)):'<span style="color:var(--mut)">—</span>'}</td>
             <td class="num" style="${efe>0?('font-weight:650;color:'+(margen<0.30?'var(--red)':(margen<0.45?'var(--amber)':'var(--green)'))):''}">${efe>0?(margen*100).toFixed(0)+'%':'—'}</td></tr>`);
         }));
         tabla = `<table class="mini vars"><thead><tr><th>Color</th><th>Puertas</th>
-            <th class="num">Costo</th><th class="num">Precio venta</th><th class="num">Margen</th></tr></thead><tbody>${rows.join('')}</tbody></table>`;
+            <th class="num">Costo</th><th class="num">P. efectivo</th><th class="num">Margen</th></tr></thead><tbody>${rows.join('')}</tbody></table>`;
       }
       return `<div class="med-sub ${medOpen?'open':''}">
         <div class="med-sub-h" data-medtog="${medKey}">

@@ -372,6 +372,14 @@
 .mod-fab .mini thead th{background:#EEF3F9}
 .mod-fab .mod-detail-chips{display:flex;flex-wrap:wrap;gap:6px}
 .mod-fab .mod-detail-foot{display:flex;gap:8px;align-items:center}
+/* Sub-nivel Medida dentro del modelo desplegado */
+.mod-fab .med-sub{border:1px solid var(--line2);border-radius:var(--r-sm);background:var(--card);overflow:hidden}
+.mod-fab .med-sub-h{display:flex;align-items:center;gap:6px;padding:9px 12px;cursor:pointer;user-select:none}
+.mod-fab .med-sub-h:hover{background:#FAFCFE}
+.mod-fab .med-sub.open .med-sub-h .caret{transform:rotate(90deg)}
+.mod-fab .med-sub-dim{font-size:10.5px;text-transform:uppercase;letter-spacing:.03em;color:var(--mut);font-weight:700}
+.mod-fab .med-sub-b{padding:0 12px 12px 30px;border-top:1px solid var(--line2)}
+.mod-fab .med-sub-b .mini{margin-top:10px}
 
 /* ---- Editor: dos columnas (secciones + costo fijo) ---- */
 .mod-fab .fam-editor-head{display:flex;align-items:center;gap:12px;margin-bottom:16px}

@@ -33,6 +33,7 @@ let state = {
   famDraft:null,            // borrador de la familia en edición (modelo nuevo)
   medIx:null,               // índice de la medida abierta en ficha
   modOpen:{},               // qué modelos están desplegados en la lista
+  modMedOpen:{},            // qué medidas están desplegadas dentro de un modelo
   modVarsAll:{},            // qué modelos muestran TODAS sus variantes
   modCat:'todos',           // tab de categoría activa en la lista
   catClosed:{},             // (legacy) categorías cerradas en la lista
@@ -646,19 +647,33 @@ function filaModelo(f){
   const disenio = `${esc(f.apertura||'—')}${f.n_puertas?` · ${f.n_puertas} puertas`:''} · ${nv} variante${nv!==1?'s':''}`;
   let detalle = '';
   if(abierto){
-    const vars = variantesDeModelo(f);
-    const verTodas = !!state.modVarsAll[f.id];
-    const vis = verTodas ? vars : vars.slice(0,6);
-    const tabla = vars.length ? `<table class="mini vars"><thead><tr>
-        <th>Medida</th><th>Color</th><th>Puertas</th><th class="num">Costo directo</th></tr></thead>
-      <tbody>${vis.map(v=>`<tr>
-        <td><strong>${esc(v.med)}</strong></td><td>${esc(v.color)}</td>
-        <td>${esc(v.puertas)}</td><td class="num">$${fmt(v.costo)}</td></tr>`).join('')}</tbody></table>
-      ${(vars.length>6 && !verTodas)?`<button class="ver-mas" data-modmore="${f.id}">
-        Ver las ${vars.length-6} variantes restantes ▾</button>`:''}`
-      : '<div class="helper" style="margin:0;">Sin variantes todavía. Abrí el modelo y cargá medidas, colores y puertas.</div>';
+    const meds = f.medidas||[];
+    const nvarMed = Math.max(1,(f.colores||[]).length) * Math.max(1,combos.length);
+    const medBloques = meds.length ? meds.map((m,mi)=>{
+      const medKey = f.id+'|'+mi;
+      const medOpen = !!state.modMedOpen[medKey];
+      const costos = [];
+      (f.colores||[]).forEach((col,ci)=>combos.forEach(cmb=>costos.push(costoVariante(f,m,ci,cmb).total)));
+      const desde = costos.length?Math.min(...costos):0;
+      let tabla = '';
+      if(medOpen){
+        const rows = [];
+        (f.colores||[]).forEach((col,ci)=>combos.forEach(cmb=>{
+          rows.push(`<tr><td>${esc(col.label||'—')}</td><td>${esc(comboLabel(f,cmb))}</td>
+            <td class="num">$${fmt(costoVariante(f,m,ci,cmb).total)}</td></tr>`);
+        }));
+        tabla = `<table class="mini vars"><thead><tr><th>Color</th><th>Puertas</th>
+            <th class="num">Costo directo</th></tr></thead><tbody>${rows.join('')}</tbody></table>`;
+      }
+      return `<div class="med-sub ${medOpen?'open':''}">
+        <div class="med-sub-h" data-medtog="${medKey}">
+          <span class="caret">▶</span>
+          <span class="med-sub-dim">Medida</span> <b>${esc(m.ancho||'?')} × ${esc(m.alto||'?')}</b>
+          <span class="t-mut" style="font-size:11.5px;color:var(--mut)">· ${nvarMed} variantes${desde?` · desde $${fmt(desde)}`:''}</span>
+        </div>${medOpen?`<div class="med-sub-b">${tabla}</div>`:''}</div>`;
+    }).join('') : '<div class="helper" style="margin:0;">Sin medidas todavía. Abrí el modelo y cargá medidas, colores y puertas.</div>';
     detalle = `<tr class="mod-detail"><td colspan="3"><div class="mod-detail-in">
-        ${tabla}
+        ${medBloques}
         <div class="mod-detail-foot">
           <button class="btn-primary btn-sm" data-editfam="${f.id}">Abrir para editar</button>
           <button class="icon-btn" data-delfam="${f.id}">Borrar modelo</button>
@@ -1500,6 +1515,8 @@ function bindFamilias(){
   };
   document.querySelectorAll('[data-modmore]').forEach(e=>e.onclick=(ev)=>{
     ev.stopPropagation(); state.modVarsAll[e.dataset.modmore]=true; render();});
+  document.querySelectorAll('[data-medtog]').forEach(e=>e.onclick=(ev)=>{
+    ev.stopPropagation(); const k=e.dataset.medtog; state.modMedOpen[k]=!state.modMedOpen[k]; render();});
   document.querySelectorAll('[data-cattog]').forEach(e=>e.onclick=()=>{
     const k=e.dataset.cattog; state.catClosed[k]=!state.catClosed[k]; render();});
 

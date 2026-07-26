@@ -170,19 +170,19 @@ async function cargarPreciosTN(){
   try{ const {data} = await rent.from('productos').select('modelo,medida,variantes,precio_lista').or(pats); prods=data||[]; }catch(e){ return; }
   const parseMed = s => { const m=String(s||'').replace(/mts?/ig,'').split(/x/i);
     return {a:Math.round(parseFloat((m[0]||'').replace(',','.'))*100)||0, al:Math.round(parseFloat((m[1]||'').replace(',','.'))*100)||0}; };
-  const espN = s=>{s=String(s||'').toUpperCase();if(s.includes('SIN'))return 0;if(s.includes('2'))return 2;if(s.includes('1'))return 1;return 0;};
+  const espN = s=>{s=String(s||'').toUpperCase();if(s.includes('SIN'))return 0;const d=s.match(/(\d+)/);return d?Number(d[1]):0;};
   prods.forEach(p=>{
     const mod = stripCat(p.modelo); if(!famNames.has(mod)) return;
     const v=p.variantes||{}; const {a,al}=parseMed(v.MEDIDAS||v.MEDIDA||p.medida);
     const esp=espN(v.ESPEJOS||v.ESPEJO);
     const melam=String(v['TIPO DE MELAMINA']||'').toUpperCase();
-    const bcs = melam.includes('BLANCO')?['B']:(melam?['C']:['B','C']);
+    const bcs = melam.includes('BLANC')?['B']:(melam?['C']:['B','C']);
     const precio=Number(p.precio_lista)||0;
     bcs.forEach(bc=>{ state.tnMap[`${mod}|${a}|${al}|${esp}|${bc}`]=precio; });
   });
 }
 const precioTN = (f, m, colorLabel, esp) => {
-  const bc = /blanco/i.test(colorLabel||'') ? 'B' : 'C';
+  const bc = /blanc/i.test(colorLabel||'') ? 'B' : 'C';
   return (state.tnMap||{})[`${String(f.nombre||'').toUpperCase()}|${m.ancho}|${m.alto}|${esp}|${bc}`] || 0;
 };
 

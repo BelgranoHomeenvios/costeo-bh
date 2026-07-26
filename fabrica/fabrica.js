@@ -497,7 +497,11 @@ function costoVariante(fam, med, colorIx, counts){
   const cTap = tapaColor  ? costPerUnit(tapaColor) : 0;
 
   // Carcasa: el mueble sin las puertas
-  const carcasa = cM2*(med.carcasa_m2||0) + cTap*(med.carcasa_tapacanto_m||0);
+  const carcasaColor = cM2*(med.carcasa_m2||0) + cTap*(med.carcasa_tapacanto_m||0);
+  // Interior de cajones: siempre melamina blanca (placa fija, no cambia con el color)
+  const interiorMat = rf.interior && rf.interior.material_id ? state.materiales.find(m=>m.id===rf.interior.material_id) : null;
+  const interior = interiorMat ? costPerM2(interiorMat)*(med.blanco_m2||0) : 0;
+  const carcasa = carcasaColor + interior;
 
   // Puertas: cada tipo con su material; la de placa hereda el color del cuerpo
   let puertas = 0;
@@ -653,7 +657,7 @@ function nuevaFamiliaDraft(){
 function nuevaMedida(base){
   if(base) return JSON.parse(JSON.stringify({...base, ancho:'', notas:''}));
   return {ancho:'',alto:'',prof:60,carcasa_m2:'',carcasa_tapacanto_m:'',
-          puerta_m2:'',puerta_tapacanto_m:'',fondo_m2:'',horas:{},cant:{},otros:0,notas:''};
+          puerta_m2:'',puerta_tapacanto_m:'',fondo_m2:'',blanco_m2:'',horas:{},cant:{},otros:0,notas:''};
 }
 
 /* ---- Filas auxiliares ---- */
@@ -804,7 +808,7 @@ function medidasGrid(d){
   const rows = d.medidas.map((m,ix)=>`<tr>
       <td><input class="gcell w-med" data-row="${ix}" data-gmf="ancho" type="number" step="1" value="${m.ancho||''}"></td>
       ${cel(ix,'alto',m.alto,'1')}${cel(ix,'prof',m.prof,'1')}
-      ${cel(ix,'carcasa_m2',m.carcasa_m2)}${cel(ix,'puerta_m2',m.puerta_m2)}
+      ${cel(ix,'carcasa_m2',m.carcasa_m2)}${cel(ix,'blanco_m2',m.blanco_m2)}${cel(ix,'puerta_m2',m.puerta_m2)}
       ${cel(ix,'fondo_m2',m.fondo_m2)}${cel(ix,'carcasa_tapacanto_m',m.carcasa_tapacanto_m)}
       ${roles.map(r=>`<td><input class="gcell" data-row="${ix}" data-gmh="${r.rid}" type="number" step="0.5"
           value="${(m.horas&&m.horas[r.rid])||''}"></td>`).join('')}
@@ -813,7 +817,7 @@ function medidasGrid(d){
         <button class="iconbtn danger" data-gmrm="${ix}" title="Eliminar">✕</button></td>
     </tr>`).join('');
   return `<div class="med-grid-wrap"><table class="med-grid"><thead><tr>
-      <th>Medida</th><th>Alto</th><th>Prof</th><th>Carcasa m²</th><th>Puerta m²</th>
+      <th>Medida</th><th>Alto</th><th>Prof</th><th>Carcasa m²</th><th>Interior m²</th><th>Puerta m²</th>
       <th>Fondo m²</th><th>Filo m</th>${roles.map(r=>`<th>${esc(r.nom)} h</th>`).join('')}<th></th>
     </tr></thead><tbody>${rows}</tbody></table></div>`;
 }
@@ -938,9 +942,14 @@ function familiaEditor(){
     `${(d.colores||[]).length} color${(d.colores||[]).length!==1?'es':''}`,
     `<div class="fam-row-head cols"><span>Color</span><span>Placa (cuerpo)</span><span>Tapacanto</span><span style="text-align:right">$/m²</span><span></span></div>
      ${coloresRows}<button class="add-line-btn" data-addfc>+ Agregar color</button>
-     <div class="fam-block-lbl" style="margin-top:16px">Fondo <span style="color:var(--mut);font-weight:500;">(material fijo)</span></div>
-     <select id="fam-fondo" style="max-width:420px"><option value="">— sin fondo —</option>
-        ${placas.map(m=>`<option value="${m.id}" ${m.id===(rf.fondo&&rf.fondo.material_id)?'selected':''}>${esc(m.nombre)}</option>`).join('')}</select>`);
+     <div class="row-2" style="margin-top:16px">
+       <div class="field" style="margin:0"><label>Interior de cajones <span style="color:var(--mut);font-weight:500;">(melamina blanca, fija)</span></label>
+         <select id="fam-interior"><option value="">— sin interior —</option>
+           ${placas.map(m=>`<option value="${m.id}" ${m.id===(rf.interior&&rf.interior.material_id)?'selected':''}>${esc(m.nombre)}</option>`).join('')}</select></div>
+       <div class="field" style="margin:0"><label>Fondo <span style="color:var(--mut);font-weight:500;">(material fijo)</span></label>
+         <select id="fam-fondo"><option value="">— sin fondo —</option>
+           ${placas.map(m=>`<option value="${m.id}" ${m.id===(rf.fondo&&rf.fondo.material_id)?'selected':''}>${esc(m.nombre)}</option>`).join('')}</select></div>
+     </div>`);
 
   // 4 · Puertas / Frente (apertura + nº + tipos)
   const s4 = fsec(4, frenteLbl,'Apertura, cantidad y tipos que generan las variantes',
@@ -1471,7 +1480,8 @@ function bindFamilias(){
     t.tapacanto_m = isNaN(v)?'':v; refrescarPanel();});
 
   // ----- Siempre lleva -----
-  bindVal('fam-fondo', v=>{ d.receta_fija.fondo={material_id:v}; });
+  bindVal('fam-fondo', v=>{ d.receta_fija.fondo={material_id:v}; refrescarPanel(); });
+  bindVal('fam-interior', v=>{ d.receta_fija.interior={material_id:v}; refrescarPanel(); });
   const akit = document.querySelector('[data-addkit]');
   if(akit) akit.onclick = ()=>{ d.receta_fija.kits.push({kit_id:'',cantidad:1}); render(); };
   document.querySelectorAll('[data-fk]').forEach(e=>e.onchange=()=>{
@@ -1556,6 +1566,7 @@ function bindFamilias(){
     const ap=document.getElementById('fam-apertura'); if(ap) d.apertura=ap.value;
     const np=document.getElementById('fam-npuertas'); if(np) d.n_puertas=+np.value||0;
     const fo=document.getElementById('fam-fondo'); if(fo) d.receta_fija.fondo={material_id:fo.value||''};
+    const inr=document.getElementById('fam-interior'); if(inr) d.receta_fija.interior={material_id:inr.value||''};
     const nt=document.getElementById('fam-notas'); if(nt) d.notas=nt.value;
     d.receta_fija.kits=(d.receta_fija.kits||[]).filter(k=>k.kit_id);
     d.receta_fija.sueltos=(d.receta_fija.sueltos||[]).filter(s=>s.insumo_id);

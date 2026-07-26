@@ -1685,8 +1685,7 @@ function bindFamilias(){
     d.medidas.splice(+e.dataset.gmrm,1); render();});
 
   // ----- Guardar -----
-  const sv = document.querySelector('[data-savefam]');
-  if(sv) sv.onclick = async()=>{
+  const guardarModelo = async()=>{
     d.nombre=(document.getElementById('fam-nombre').value||'').trim();
     if(!d.nombre){ alert('Poné un nombre de modelo.'); return; }
     // Categoría: texto → id (crea la categoría si es nueva)
@@ -1726,6 +1725,7 @@ function bindFamilias(){
       state.famDraft=null; state.medIx=null; await loadAll();
     }catch(err){ alert('No se pudo guardar: '+(err.message||err)); }
   };
+  document.querySelectorAll('[data-savefam]').forEach(b=>b.onclick=guardarModelo);
 }
 
 function bindEvents(){

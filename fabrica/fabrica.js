@@ -889,13 +889,12 @@ function familiaEditor(){
     </div>`;}).join('');
 
   const tiposRows = `<div class="med-grid-wrap"><table class="med-grid herr">
-    <thead><tr><th>Tipo</th><th>Material</th><th>¿Lleva filo?</th><th class="num">Metros de filo</th><th></th></tr></thead>
+    <thead><tr><th>Tipo</th><th>Filo</th><th class="num">Metros de filo</th><th></th></tr></thead>
     <tbody>${(d.puerta_tipos||[]).map((t,ix)=>{
       const lleva = t.lleva_tapacanto !== false;
       const mat = t.hereda ? 'hereda el color del cuerpo' : ((state.materiales.find(m=>m.id===t.material_id)||{}).nombre||'—');
       return `<tr>
-        <td><b>${esc(t.label)}</b></td>
-        <td>${esc(mat)}</td>
+        <td><b>${esc(t.label)}</b><div class="sub-mat">${esc(mat)}</div></td>
         <td><button class="tgl ${lleva?'on':'off'}" data-pttap="${ix}">${lleva?'Sí':'No'}</button></td>
         <td class="num">${lleva?`<input class="gcell" data-ptm="${ix}" type="number" step="0.01" value="${(t.tapacanto_m!==undefined&&t.tapacanto_m!=='')?t.tapacanto_m:''}" placeholder="m">`:'—'}</td>
         <td class="num"><button class="iconbtn danger" data-rmpt="${ix}">✕</button></td>
@@ -964,14 +963,7 @@ function familiaEditor(){
       </div>
       <div class="fam-block-lbl">Tipos</div>
       ${tiposRows}
-      <div class="fam-tipo-new">
-        <input id="fam-npt-label" placeholder="ej: Espejo">
-        <select id="fam-npt-mat"><option value="">— material —</option>
-          ${placas.map(m=>`<option value="${m.id}">${esc(m.nombre)}</option>`).join('')}</select>
-        <label class="fam-role-chip"><input type="checkbox" id="fam-npt-tap"> lleva tapacanto</label>
-        <button class="icon-btn" data-addpt>+ tipo</button>
-      </div>
-      ${combos.length?`<div class="fam-combos">
+      ${combos.length?`<div class="fam-combos" style="margin-top:12px">
         <div class="fam-combos-tit">Combinaciones que se generan solas (${combos.length})</div>
         ${combos.map(c=>`<span class="chip chip-static">${esc(comboLabel(d,c))}</span>`).join(' ')}
       </div>`:''}`);

@@ -555,6 +555,74 @@ const nVariantes = fam => (fam.medidas||[]).length
   * Math.max(1,(fam.colores||[]).length)
   * combosPuertas((fam.puerta_tipos||[]).length, fam.n_puertas||0).length;
 
+/* ============================================================
+   VÍNCULO Fábrica → Proveedores
+   Vuelca el costo de cada variante del modelo al producto de
+   Proveedores que coincide (modelo + medida + espejo + melamina),
+   escribiendo costo_fabrica por tn_variant_id (esquema rentabilidad).
+   ============================================================ */
+async function volcarCostos(fam, silencioso){
+  if(!fam || !fam.nombre) return {matched:0, total:0};
+  const catNom  = (state.categorias.find(c=>c.id===fam.categoria_id)||{}).nombre || '';
+  const catUp   = catNom.trim().toUpperCase().replace(/S$/,'');   // "Placards" → "PLACARD"
+  const modeloFab = (fam.nombre||'').trim().toUpperCase();
+
+  let prods;
+  try{
+    const {data, error} = await sb.schema('rentabilidad').from('productos')
+      .select('id,tn_variant_id,modelo,medida,variantes')
+      .ilike('modelo', '%'+modeloFab+'%');
+    if(error) throw error;
+    prods = data||[];
+  }catch(e){
+    if(!silencioso) alert('No pude leer los productos de Proveedores: '+(e.message||e));
+    return {matched:0, total:0, error:e};
+  }
+
+  // Firmas de costo de las variantes de Fábrica: ancho|alto|espejos|B/C
+  const combos = combosPuertas((fam.puerta_tipos||[]).length, fam.n_puertas||0);
+  const espIx  = (fam.puerta_tipos||[]).findIndex(t=>/espejo/i.test(t.label||''));
+  const sig = new Map();
+  (fam.medidas||[]).forEach(med=>{
+    (fam.colores||[]).forEach((col,ci)=>{
+      const bc = /blanco/i.test(col.label||'') ? 'B' : 'C';
+      combos.forEach(cmb=>{
+        const esp = espIx>=0 ? (cmb[espIx]||0) : 0;
+        const k = `${med.ancho}|${med.alto}|${esp}|${bc}`;
+        if(!sig.has(k)) sig.set(k, Math.round(costoVariante(fam, med, ci, cmb).total));
+      });
+    });
+  });
+
+  const parseMed = s => {
+    const m = String(s||'').replace(/mts?/ig,'').split(/x/i);
+    return { ancho:Math.round(parseFloat((m[0]||'').replace(',','.'))*100)||0,
+             alto: Math.round(parseFloat((m[1]||'').replace(',','.'))*100)||0 };
+  };
+  const espNum = s => { s=String(s||'').toUpperCase(); if(s.includes('SIN'))return 0; if(s.includes('2'))return 2; if(s.includes('1'))return 1; return 0; };
+
+  const updates = [];
+  prods.forEach(p=>{
+    const modProv = String(p.modelo||'').toUpperCase().replace(new RegExp('^'+catUp+'S?\\b\\s*'),'').trim();
+    if(modProv !== modeloFab) return;                 // exacto (evita "OLIVER CON BAULERA")
+    const v = p.variantes||{};
+    const {ancho,alto} = parseMed(v.MEDIDAS || v.MEDIDA || p.medida);
+    const esp = espNum(v.ESPEJOS || v.ESPEJO);
+    const melam = String(v['TIPO DE MELAMINA']||'').toUpperCase();
+    const bc = melam.includes('BLANCO') ? 'B' : (melam ? 'C' : null);
+    const keys = bc ? [`${ancho}|${alto}|${esp}|${bc}`] : [`${ancho}|${alto}|${esp}|B`, `${ancho}|${alto}|${esp}|C`];
+    for(const k of keys){ if(sig.has(k)){ updates.push({id:p.id, costo:sig.get(k)}); break; } }
+  });
+
+  let ok = 0;
+  for(const u of updates){
+    const {error} = await sb.schema('rentabilidad').from('productos')
+      .update({costo_fabrica:u.costo}).eq('id', u.id);
+    if(!error) ok++;
+  }
+  return {matched:ok, total:prods.length};
+}
+
 /* ---- Listado de modelos (KPIs + tabs + variantes con costo) ---- */
 function costoRep(f, combos){
   const meds=f.medidas||[];
@@ -629,7 +697,8 @@ function familiasPage(){
       .map(k=>[k,catName(k),conteo[k]]));
   const tabs = `<div class="subtabbar">${tabDefs.map(([k,n,c])=>
     `<button class="subtab ${state.modCat===k?'active':''}" data-modcat="${esc(k)}">${esc(n)} <span class="subtab-n">${c}</span></button>`).join('')}
-    <button class="btn-primary btn-sm" style="margin-left:auto" data-newfam>+ Nuevo modelo</button></div>`;
+    <button class="btn-sm" style="margin-left:auto" data-vincular title="Volcar el costo de todos los modelos a Proveedores">🔗 Vincular a Proveedores</button>
+    <button class="btn-primary btn-sm" data-newfam>+ Nuevo modelo</button></div>`;
 
   // Lista filtrada
   const list = (state.modCat==='todos' ? fams : fams.filter(f=>(f.categoria_id||'__none')===state.modCat))
@@ -1414,6 +1483,16 @@ function bindFamilias(){
     const id=e.dataset.modtog; state.modOpen[id]=!state.modOpen[id]; render();});
   document.querySelectorAll('[data-modcat]').forEach(e=>e.onclick=()=>{
     state.modCat=e.dataset.modcat; render();});
+  const vinc = document.querySelector('[data-vincular]');
+  if(vinc) vinc.onclick = async()=>{
+    if(!confirm('Volcar el costo de todos los modelos cargados a Proveedores?\n(Actualiza costo_fabrica en los productos que coinciden.)')) return;
+    vinc.disabled = true; vinc.textContent = 'Vinculando…';
+    let tot = 0;
+    for(const f of state.familias){ try{ const r = await volcarCostos(f, true); tot += r.matched; }catch(e){} }
+    vinc.disabled = false; vinc.textContent = '🔗 Vincular a Proveedores';
+    if(typeof UI!=='undefined' && UI.toast) UI.toast(`${tot} variantes vinculadas en Proveedores`, 'ok');
+    else alert(tot+' variantes vinculadas en Proveedores.');
+  };
   document.querySelectorAll('[data-modmore]').forEach(e=>e.onclick=(ev)=>{
     ev.stopPropagation(); state.modVarsAll[e.dataset.modmore]=true; render();});
   document.querySelectorAll('[data-cattog]').forEach(e=>e.onclick=()=>{
@@ -1570,6 +1649,11 @@ function bindFamilias(){
     try{
       const q = d.id ? sb.from('familias').update(payload).eq('id',d.id) : sb.from('familias').insert(payload);
       const {error} = await q; if(error) throw error;
+      // Volcar el costo a Proveedores (match por modelo+medida+espejo+melamina → tn_variant_id)
+      let vinc = null;
+      try{ vinc = await volcarCostos(d, true); }catch(e){}
+      if(typeof UI!=='undefined' && UI.toast)
+        UI.toast('Modelo guardado'+(vinc?` · ${vinc.matched} variantes vinculadas a Proveedores`:''), 'ok');
       state.famDraft=null; state.medIx=null; await loadAll();
     }catch(err){ alert('No se pudo guardar: '+(err.message||err)); }
   };

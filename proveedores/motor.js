@@ -31,7 +31,7 @@ const Data = (() => {
   const deDB = r => ({
     id:r.id, categoriaId:r.categoria_id, modelo:r.modelo, variantes:r.variantes||{},
     medida:r.medida, medidaCosteo:r.medida_costeo, tier:r.tier, atributo:r.atributo,
-    costoManual:Number(r.costo_manual)||0, adicional:Number(r.adicional)||0,
+    costoManual:Number(r.costo_manual)||0, costoFabrica:Number(r.costo_fabrica)||0, adicional:Number(r.adicional)||0,
     ajusteManual:Number(r.ajuste_manual)||0, precioLista:Number(r.precio_lista)||0,
     obs:r.obs||'',
     // Vínculo con Tienda Nube (se cargan una vez; la app no los reescribe).
@@ -335,7 +335,10 @@ const Calc = (() => {
   /** Cálculo completo de un producto. Devuelve todos los indicadores. */
   function producto(p){
     const cfg = Data.s.config;
-    const base = Number(p.costoManual)>0
+    // Prioridad de costo: 1) costo de Fábrica (volcado), 2) costo manual, 3) tabla.
+    const base = Number(p.costoFabrica)>0
+      ? Number(p.costoFabrica)
+      : Number(p.costoManual)>0
       ? Number(p.costoManual)
       : costoTabla(p.categoriaId, p.medidaCosteo, p.tier);
     const {pct, fijo} = adicionales(p);
@@ -365,7 +368,8 @@ const Calc = (() => {
     return {
       base, costoFinal, lista, efectivo, markup, ganancia, margen,
       target, sugerido, aumentoPct, estado, tieneCosto: costoFinal>0,
-      baseDeTabla: Number(p.costoManual)>0 ? false : base>0,
+      deFabrica: Number(p.costoFabrica)>0,
+      baseDeTabla: (Number(p.costoManual)>0 || Number(p.costoFabrica)>0) ? false : base>0,
       adicPct: pct, adicFijo: fijo,
       costoHierro, hierro: hierro ? {largo:hierro.largo, alto:hierro.alto, precio:hierro.precio} : null
     };

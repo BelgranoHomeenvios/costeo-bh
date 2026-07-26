@@ -357,12 +357,19 @@ const Views = (() => {
     return rows;
   }
 
-  /** Claves de variante de un modelo, en orden (Estructura primero si existe). */
+  /** Claves de variante de un modelo, ordenadas por prioridad:
+   *  color/terminación → espejo → resto. La medida se excluye (ya es el grupo). */
   function clavesVar(items){
     const claves = [];
     items.forEach(({p})=>Object.keys(p.variantes||{}).forEach(k=>{ if(!claves.includes(k)) claves.push(k); }));
-    claves.sort((a,b)=>(a==='Estructura'?-1:0)-(b==='Estructura'?-1:0));
-    return claves;
+    const prio = k => { const s=String(k).toUpperCase();
+      if(s.includes('MELAMINA')||s.includes('COLOR')||s.includes('ESTRUCTURA')||s.includes('FRENTE')
+        ||s.includes('TERMINA')||s.includes('TAPIZ')||s.includes('MODULO')||s.includes('TAPA')||s.includes('DETALLE')) return 1;
+      if(s.includes('ESPEJO')) return 2;
+      return 3; };
+    return claves
+      .filter(k=>!String(k).toUpperCase().includes('MEDIDA'))   // la medida ya es el grupo
+      .sort((a,b)=>prio(a)-prio(b));
   }
 
   /** Árbol: Modelo → Medida → (al abrir la medida) todas las variantes como
@@ -1051,7 +1058,12 @@ const Views = (() => {
       F.prod.page=0; Router.refresh(); },
     clearMulti(key){ F.prod[key]=[]; F.prod.menuCol=''; F.prod.page=0; Router.refresh(); },
     toggleMenuCol(k){ F.prod.menuCol = F.prod.menuCol===k?'':k; Router.refresh(); },
-    toggleProdModelo(k){ F.prod.expM = {...(F.prod.expM||{})}; F.prod.expM[k]=!F.prod.expM[k]; Router.refresh(); },
+    toggleProdModelo(k){
+      const v=document.getElementById('view'); const sy=window.scrollY||0, st=v?v.scrollTop:0;
+      F.prod.expM = {...(F.prod.expM||{})}; F.prod.expM[k]=!F.prod.expM[k];
+      Router.refresh();
+      const v2=document.getElementById('view'); if(v2) v2.scrollTop=st; if(sy) window.scrollTo(0,sy);
+    },
     setVar(campo,val){
       F.prod.vars = {...F.prod.vars};
       if(val) F.prod.vars[campo]=val; else delete F.prod.vars[campo];

@@ -505,7 +505,8 @@ function costoVariante(fam, med, colorIx, counts){
     const c = (counts&&counts[i])||0; if(!c) return;
     const mat = t.hereda ? placaColor : state.materiales.find(m=>m.id===t.material_id);
     if(mat) puertas += c * costPerM2(mat) * (med.puerta_m2||0);
-    if(t.lleva_tapacanto !== false) puertas += c * cTap * (med.puerta_tapacanto_m||0);
+    // Filo/tapacanto de la puerta: metros definidos en el tipo (tapacanto_m); si no, por medida.
+    if(t.lleva_tapacanto !== false) puertas += c * cTap * (t.tapacanto_m || med.puerta_tapacanto_m || 0);
   });
 
   // Fondo (fijo, no cambia con el color)
@@ -833,21 +834,20 @@ function herrajesModulo(d){
   const meds = d.medidas||[];
   const mi = Math.min((state.preview||{}).medIx||0, Math.max(0, meds.length-1));
   const med = meds[mi];
+  const cat = (state.categorias.find(c=>c.id===d.categoria_id)||{}).nombre||'';
+  const singular = cat ? cat.toLowerCase().replace(/s$/,'') : 'modelo';
   const medSel = `<div class="medbar">
-      <span class="medbar-lb">Medida activa</span>
+      <span class="medbar-lb">Insumos para ${esc(singular)} de</span>
       <select id="fam-med-activa">${meds.map((m,i)=>`<option value="${i}" ${i===mi?'selected':''}>${esc(m.ancho||'?')} × ${esc(m.alto||'?')}</option>`).join('')||'<option>— sin medidas —</option>'}</select>
-      <span class="medbar-h">cargás los herrajes de esta medida</span>
-      <button class="btn-sm" data-copiartodas>⧉ Copiar cantidades a todas</button>
+      <button class="btn-sm" data-copiartodas>⧉ Copiar a todas</button>
     </div>`;
   const filas = (rf.sueltos||[]).map((s,ix)=>{
     const i  = state.insumos.find(x=>x.id===s.insumo_id);
     const cu = i ? costPerUnit(i) : 0;
     const cant = (med && med.cant && med.cant[s.insumo_id]!==undefined) ? med.cant[s.insumo_id] : (s.cantidad||0);
-    const porMedida = meds.some(m=>m.cant && m.cant[s.insumo_id]!==undefined);
     return `<tr>
       <td><select class="gsel" data-fs="${ix}" data-f="insumo_id"><option value="">— insumo / herraje —</option>
-        ${state.insumos.map(x=>`<option value="${x.id}" ${x.id===s.insumo_id?'selected':''}>${esc(x.nombre)}</option>`).join('')}</select>
-        ${porMedida?'<span class="chg-tag">cambia por medida</span>':''}</td>
+        ${state.insumos.map(x=>`<option value="${x.id}" ${x.id===s.insumo_id?'selected':''}>${esc(x.nombre)}</option>`).join('')}</select></td>
       <td class="num"><input class="gcell" data-hcant="${ix}" type="number" step="0.01" value="${(cant!==''&&cant!==undefined)?cant:''}"></td>
       <td class="num">${fmt(cu)}</td>
       <td class="num" data-hsub="${ix}">$${fmt(cu*(cant||0))}</td>
@@ -860,10 +860,7 @@ function herrajesModulo(d){
   return `${meds.length?medSel:'<div class="helper" style="margin:0 0 10px;">Primero cargá medidas en el módulo Medidas.</div>'}
     ${tabla}
     <button class="add-line-btn" data-addsuelto style="margin-top:8px;">+ Agregar herraje</button>
-    <div class="helper" style="margin-top:10px;">Los que no cambian (tornillos, pitutos) los cargás una vez y tocás <b>“copiar a todas”</b>. Los que cambian con la medida (el barral) los editás entrando a cada medida.</div>
-    <div class="fam-block-lbl" style="margin-top:16px">Combos de insumos <span style="color:var(--mut);font-weight:500;">(opcional, fijos)</span></div>
-    <div id="fam-kits">${kitsRows(d)}</div>
-    <button class="add-line-btn" data-addkit style="margin-top:6px;">+ Agregar combo</button>`;
+    <div class="helper" style="margin-top:10px;">Los que no cambian (tornillos, pitutos) cargalos una vez y tocá <b>“Copiar a todas”</b>. Los que cambian con la medida (el barral) editalos entrando a cada medida.</div>`;
 }
 
 /* ---- Editor de familia ---- */
@@ -887,13 +884,19 @@ function familiaEditor(){
       <button class="icon-btn" data-rmfc="${ix}" ${(d.colores.length===1)?'style="visibility:hidden;"':''}>✕</button>
     </div>`;}).join('');
 
-  const tiposRows = (d.puerta_tipos||[]).map((t,ix)=>t.hereda
-    ? `<div class="fam-tipo-row"><span class="chip chip-static">${esc(t.label)} <span class="pill">toma el color del cuerpo</span></span>
-       <span class="fam-tipo-tap">lleva tapacanto</span><span></span></div>`
-    : `<div class="fam-tipo-row">
-        <span class="chip chip-on">${esc(t.label)}</span>
-        <span class="fam-tipo-tap">${t.lleva_tapacanto===false?'sin tapacanto':'lleva tapacanto'} · ${esc((state.materiales.find(m=>m.id===t.material_id)||{}).nombre||'—')}</span>
-        <button class="icon-btn" data-rmpt="${ix}">✕</button></div>`).join('');
+  const tiposRows = `<div class="med-grid-wrap"><table class="med-grid herr">
+    <thead><tr><th>Tipo</th><th>Material</th><th>¿Lleva filo?</th><th class="num">Metros de filo</th><th></th></tr></thead>
+    <tbody>${(d.puerta_tipos||[]).map((t,ix)=>{
+      const lleva = t.lleva_tapacanto !== false;
+      const mat = t.hereda ? 'hereda el color del cuerpo' : ((state.materiales.find(m=>m.id===t.material_id)||{}).nombre||'—');
+      return `<tr>
+        <td><b>${esc(t.label)}</b></td>
+        <td>${esc(mat)}</td>
+        <td><button class="tgl ${lleva?'on':'off'}" data-pttap="${ix}">${lleva?'Sí':'No'}</button></td>
+        <td class="num">${lleva?`<input class="gcell" data-ptm="${ix}" type="number" step="0.01" value="${(t.tapacanto_m!==undefined&&t.tapacanto_m!=='')?t.tapacanto_m:''}" placeholder="m">`:'—'}</td>
+        <td class="num"><button class="iconbtn danger" data-rmpt="${ix}">✕</button></td>
+      </tr>`;
+    }).join('')}</tbody></table></div>`;
 
   const medRows = (d.medidas||[]).length ? (d.medidas||[]).map((m,ix)=>`
     <div class="med-item ${state.medIx===ix?'med-item-on':''}">
@@ -1461,6 +1464,11 @@ function bindFamilias(){
     if(!label||!mat){ alert('Poné un nombre y elegí el material del tipo de puerta.'); return; }
     d.puerta_tipos.push({label, material_id:mat, lleva_tapacanto:tap}); render();};
   document.querySelectorAll('[data-rmpt]').forEach(e=>e.onclick=()=>{ d.puerta_tipos.splice(+e.dataset.rmpt,1); render(); });
+  document.querySelectorAll('[data-pttap]').forEach(e=>e.onclick=()=>{
+    const t=d.puerta_tipos[+e.dataset.pttap]; t.lleva_tapacanto = (t.lleva_tapacanto===false); render();});
+  document.querySelectorAll('[data-ptm]').forEach(e=>e.onchange=()=>{
+    const t=d.puerta_tipos[+e.dataset.ptm]; const v=parseFloat(e.value);
+    t.tapacanto_m = isNaN(v)?'':v; refrescarPanel();});
 
   // ----- Siempre lleva -----
   bindVal('fam-fondo', v=>{ d.receta_fija.fondo={material_id:v}; });

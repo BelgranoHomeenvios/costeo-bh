@@ -181,12 +181,18 @@ async function cargarPreciosTN(){
     const melam=String(v['TIPO DE MELAMINA']||'').toUpperCase();
     const bcs = melam.includes('BLANC')?['B']:(melam?['C']:['B','C']);
     const precio=Number(p.precio_lista)||0;
-    bcs.forEach(bc=>{ state.tnMap[`${mod}|${a}|${al}|${esp}|${bc}`]=precio; });
+    bcs.forEach(bc=>{
+      state.tnMap[`${mod}|${a}|${al}|${esp}|${bc}`]=precio;
+      state.tnMap[`${mod}|${a}|*|${esp}|${bc}`]=precio;   // fallback: algunos modelos guardan la medida solo con el ancho (sin alto)
+    });
   });
 }
 const precioTN = (f, m, colorLabel, esp) => {
   const bc = /blanc/i.test(colorLabel||'') ? 'B' : 'C';
-  return (state.tnMap||{})[`${String(f.nombre||'').toUpperCase()}|${m.ancho}|${m.alto}|${esp}|${bc}`] || 0;
+  const map = state.tnMap||{};
+  const base = `${String(f.nombre||'').toUpperCase()}|${m.ancho}`;
+  const val = map[`${base}|${m.alto}|${esp}|${bc}`];
+  return (val!==undefined ? val : map[`${base}|*|${esp}|${bc}`]) || 0;
 };
 
 async function save(tabla, id, data){
@@ -2035,26 +2041,36 @@ function bindSave(){
 
   /* ---- vistas ---- */
   function despiecePage(){
-    return state.dspFam ? dspEditor() : dspLista();
+    if(state.dspFam) return dspEditor();
+    if(state.dspCat) return dspListaCat();
+    return dspCatChooser();
   }
   function dspEsDespiezado(f){ return !!(f && f.despiece && f.despiece.med && Object.keys(f.despiece.med).length); }
-  function dspLista(){
-    const fams = state.familias||[];
-    state.dspCat = state.dspCat || 'todos';
-    const catName = id => (state.categorias.find(c=>c.id===id)||{}).nombre || 'Sin categoría';
-    const nDone = fams.filter(dspEsDespiezado).length;
+  function dspCatChooser(){
+    const fams=state.familias||[], cats=state.categorias||[];
+    const card=(id,label)=>{ const list=fams.filter(f=>f.categoria_id===id), done=list.filter(dspEsDespiezado).length;
+      return `<button class="dsp-cat" data-dspcat="${esc(id)}">${Icon('grid')}
+        <div class="dsp-cat-nm">${esc(label)}</div>
+        <div class="dsp-cat-ct">${list.length} ${list.length===1?'modelo':'modelos'} · ${done} despiezado${done===1?'':'s'}</div></button>`; };
+    return head('03 · Despiece','Despiece','Elegí una categoría para ver sus modelos y cargar el despiece de cada uno.')
+      + `<div class="dsp-catgrid">${cats.map(c=>card(c.id,c.nombre)).join('') || empty('No hay categorías cargadas.')}</div>`;
+  }
+  function dspListaCat(){
+    const fams=state.familias||[];
+    const catName=id=>(state.categorias.find(c=>c.id===id)||{}).nombre||'Sin categoría';
+    const cur=state.dspCat, curNom=catName(cur);
+    const crumb=`<div class="dsp-crumb"><span class="lk" data-dspnav="root">Despiece</span><span class="sep">›</span><span class="cur">${esc(curNom)}</span></div>`;
+    const list=fams.filter(f=>(f.categoria_id||'__none')===cur).slice().sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''));
+    const nDone=list.filter(dspEsDespiezado).length;
     const kpi=(l,v,s)=>`<div class="kpi"><div class="kpi-l">${l}</div><div class="kpi-v">${v}</div><div class="kpi-s">${s||''}</div></div>`;
     const kpis=`<div class="kpi-row">
-      ${kpi('Modelos', fams.length, 'a despiezar')}
+      ${kpi('Modelos', list.length, 'en '+esc(curNom))}
       ${kpi('Despiezados', nDone, 'con m² cargados')}
-      ${kpi('Pendientes', fams.length-nDone, 'sin despiece')}</div>`;
+      ${kpi('Pendientes', list.length-nDone, 'sin despiece')}</div>`;
     const conteo={}; fams.forEach(f=>{ const k=f.categoria_id||'__none'; conteo[k]=(conteo[k]||0)+1; });
-    const tabDefs=[['todos','Todos',fams.length]].concat(Object.keys(conteo)
-      .sort((a,b)=>catName(a).localeCompare(catName(b))).map(k=>[k,catName(k),conteo[k]]));
-    const tabs=`<div class="subtabbar">${tabDefs.map(([k,n,c])=>
-      `<button class="subtab ${state.dspCat===k?'active':''}" data-dspcat="${esc(k)}">${esc(n)} <span class="subtab-n">${c}</span></button>`).join('')}</div>`;
-    const list=(state.dspCat==='todos'?fams:fams.filter(f=>(f.categoria_id||'__none')===state.dspCat))
-      .slice().sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''));
+    const catsTab=(state.categorias||[]).filter(c=>conteo[c.id]);
+    const tabs=`<div class="subtabbar">${catsTab.map(c=>
+      `<button class="subtab ${cur===c.id?'active':''}" data-dspcat="${esc(c.id)}">${esc(c.nombre)} <span class="subtab-n">${conteo[c.id]||0}</span></button>`).join('')}</div>`;
     const fila=f=>{ const done=dspEsDespiezado(f), nmed=(f.medidas||[]).length;
       const dis=`${esc(f.apertura||'—')}${f.n_puertas?` · ${f.n_puertas} puertas`:''} · ${nmed} medida${nmed!==1?'s':''}`;
       return `<tr class="mod-row" data-dspfam="${esc(f.id)}" style="cursor:pointer">
@@ -2064,18 +2080,16 @@ function bindSave(){
     const tabla=list.length?`<div class="card" style="padding:0;overflow:hidden;"><table class="mod-tbl"><thead><tr>
       <th>Modelo</th><th>Diseño</th><th class="num">Despiece</th></tr></thead><tbody>${list.map(fila).join('')}</tbody></table></div>`
       : empty('No hay modelos en esta categoría.');
-    return head('03 · Despiece','Despiece',
-      'Elegí un modelo para cargar o editar su despiece. De acá salen los m², el filo y la solicitud de accesorios que alimentan el costo del modelo.')
-      + kpis + tabs + tabla;
+    return crumb + head('03 · Despiece', esc(curNom), 'Tocá un modelo para cargar o editar su despiece.') + kpis + tabs + tabla;
   }
   function dspEditor(){
     const fam=(state.familias||[]).find(f=>f.id===state.dspFam);
-    if(!fam){ state.dspFam=null; return dspModelos(); }
+    if(!fam){ state.dspFam=null; return despiecePage(); }
     const nom=(state.categorias.find(c=>c.id===fam.categoria_id)||{}).nombre||'';
     const meds=fam.medidas||[];
     if(!(state.dspMed<meds.length)) state.dspMed=0;
-    const crumb=`<div class="dsp-crumb"><span class="lk" data-dspnav="cat">Despiece</span><span class="sep">›</span>
-      <span class="cur">${esc(fam.nombre)} <span style="color:var(--mut);font-weight:500">· ${esc(nom)}</span></span></div>`;
+    const crumb=`<div class="dsp-crumb"><span class="lk" data-dspnav="root">Despiece</span><span class="sep">›</span>
+      <span class="lk" data-dspnav="cat">${esc(nom)}</span><span class="sep">›</span><span class="cur">${esc(fam.nombre)}</span></div>`;
     if(!meds.length)
       return crumb + head('03 · Despiece', esc(fam.nombre), esc(nom))
         + empty('Este modelo todavía no tiene medidas. Cargalas en Modelos → editar → Medidas y volvé.');
@@ -2167,7 +2181,8 @@ function bindSave(){
     const fam=state.dspFam ? (state.familias||[]).find(f=>f.id===state.dspFam) : null;
     document.querySelectorAll('[data-dspcat]').forEach(e=>e.onclick=()=>{ state.dspCat=e.dataset.dspcat; render(); });
     document.querySelectorAll('[data-dspfam]').forEach(e=>e.onclick=()=>{ state.dspFam=e.dataset.dspfam; state.dspMed=0; render(); });
-    document.querySelectorAll('[data-dspnav]').forEach(e=>e.onclick=()=>{ state.dspFam=null; render(); });
+    document.querySelectorAll('[data-dspnav]').forEach(e=>e.onclick=()=>{ const t=e.dataset.dspnav;
+      state.dspFam=null; if(t==='root') state.dspCat=null; render(); });
     if(!fam) return;
     document.querySelectorAll('[data-dspmed]').forEach(e=>e.onclick=()=>{ state.dspMed=+e.dataset.dspmed; render(); });
     document.querySelectorAll('[data-dspstp]').forEach(e=>e.onclick=()=>{ const [k,d]=e.dataset.dspstp.split(':');

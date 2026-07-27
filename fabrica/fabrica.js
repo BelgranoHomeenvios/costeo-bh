@@ -36,6 +36,7 @@ let state = {
   modMedOpen:{},            // qué medidas están desplegadas dentro de un modelo
   modVarsAll:{},            // qué modelos muestran TODAS sus variantes
   modCat:'todos',           // tab de categoría activa en la lista
+  modCatOpen:{},            // categorías abiertas en el acordeón de Modelos (default: cerradas)
   catClosed:{},             // (legacy) categorías cerradas en la lista
   famOpen:1,                // qué módulo del editor está abierto (uno por vez)
   preview:null,             // variante que muestra el panel de costo en vivo
@@ -729,7 +730,7 @@ function filaModelo(f){
           <span class="t-mut" style="font-size:11.5px;color:var(--mut)">· ${nvarMed} variantes${desde?` · desde $${fmt(desde)}`:''}</span>
         </div>${medOpen?`<div class="med-sub-b">${tabla}</div>`:''}</div>`;
     }).join('') : '<div class="helper" style="margin:0;">Sin medidas todavía. Abrí el modelo y cargá medidas, colores y puertas.</div>';
-    detalle = `<tr class="mod-detail"><td colspan="3"><div class="mod-detail-in">
+    detalle = `<tr class="mod-detail"><td colspan="2"><div class="mod-detail-in">
         ${medBloques}
         <div class="mod-detail-foot">
           <button class="btn-primary btn-sm" data-editfam="${f.id}">Abrir para editar</button>
@@ -738,14 +739,13 @@ function filaModelo(f){
       </div></td></tr>`;
   }
   return `<tr class="mod-row ${abierto?'on':''}" data-modtog="${f.id}">
-      <td class="mod-caret"><span class="caret">▶</span><strong>${esc(f.nombre)}</strong></td>
-      <td class="mod-dis">${disenio}</td>
+      <td class="mod-caret"><span class="caret">▶</span>
+        <span class="mod-title"><strong>${esc(f.nombre)}</strong><span class="mod-sub">${disenio}</span></span></td>
       <td class="num mod-costo">${rep?`desde $${fmt(rep)}`:'—'}</td>
     </tr>${detalle}`;
 }
 function familiasPage(){
   const fams = state.familias;
-  state.modCat = state.modCat || 'todos';
   const catName = id => (state.categorias.find(c=>c.id===id)||{}).nombre || 'Sin categoría';
 
   // KPIs
@@ -762,29 +762,32 @@ function familiasPage(){
     ${kpi('Categorías', nCats, 'con modelos')}
   </div>`;
 
-  // Tabs por categoría
-  const conteo = {}; fams.forEach(f=>{ const k=f.categoria_id||'__none'; conteo[k]=(conteo[k]||0)+1; });
-  const tabDefs = [['todos','Todos',fams.length]]
-    .concat(Object.keys(conteo).sort((a,b)=>catName(a).localeCompare(catName(b)))
-      .map(k=>[k,catName(k),conteo[k]]));
-  const tabs = `<div class="subtabbar">${tabDefs.map(([k,n,c])=>
-    `<button class="subtab ${state.modCat===k?'active':''}" data-modcat="${esc(k)}">${esc(n)} <span class="subtab-n">${c}</span></button>`).join('')}
-    <button class="btn-sm" style="margin-left:auto" data-vincular title="Volcar el costo de todos los modelos a Proveedores">🔗 Vincular a Proveedores</button>
+  const toolbar = `<div class="mod-toolbar" style="gap:8px;">
+    <button class="btn-sm" data-vincular title="Volcar el costo de todos los modelos a Proveedores">Vincular a Proveedores</button>
     <button class="btn-primary btn-sm" data-newfam>+ Nuevo modelo</button></div>`;
 
-  // Lista filtrada
-  const list = (state.modCat==='todos' ? fams : fams.filter(f=>(f.categoria_id||'__none')===state.modCat))
-    .slice().sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''));
+  // Acordeón por categoría — todo cerrado por defecto
+  const byCat = {}; fams.forEach(f=>{ const k=f.categoria_id||'__none'; (byCat[k]=byCat[k]||[]).push(f); });
+  const catKeys = Object.keys(byCat).sort((a,b)=>catName(a).localeCompare(catName(b)));
+  const grupos = catKeys.map(k=>{
+    const open = !!state.modCatOpen[k];
+    const models = byCat[k].slice().sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''));
+    return `<section class="modcat ${open?'open':''}">
+      <div class="modcat-h" data-cattog="${esc(k)}">
+        <span class="caret">▶</span>
+        <span class="modcat-t">${esc(catName(k))}</span>
+        <span class="modcat-n">${models.length} modelo${models.length!==1?'s':''}</span>
+      </div>
+      <div class="modcat-b"><table class="mod-tbl"><tbody>${models.map(filaModelo).join('')}</tbody></table></div>
+    </section>`;
+  }).join('');
 
-  const tabla = list.length ? `<div class="card" style="padding:0;overflow:hidden;">
-    <table class="mod-tbl"><thead><tr>
-      <th>Modelo</th><th>Diseño</th><th class="num">Costo</th>
-    </tr></thead><tbody>${list.map(filaModelo).join('')}</tbody></table></div>`
-    : empty(fams.length ? 'No hay modelos en esta categoría.' : 'Todavía no cargaste ningún modelo. Empezá con "+ Nuevo modelo".');
+  const cuerpo = fams.length ? grupos
+    : empty('Todavía no cargaste ningún modelo. Empezá con "+ Nuevo modelo".');
 
   return head('01 · Modelos','Modelos de fábrica',
-      'Cada modelo se carga una vez y se despliega en todas sus variantes. Tocá un modelo para ver sus variantes y el costo de cada una.')
-    + kpis + tabs + tabla;
+      'Elegí una categoría para ver sus modelos. Cada modelo se despliega en todas sus variantes.')
+    + kpis + toolbar + cuerpo;
 }
 
 /* ---- Draft nuevo ---- */
@@ -1575,7 +1578,7 @@ function bindFamilias(){
   document.querySelectorAll('[data-medtog]').forEach(e=>e.onclick=(ev)=>{
     ev.stopPropagation(); const k=e.dataset.medtog; state.modMedOpen[k]=!state.modMedOpen[k]; render();});
   document.querySelectorAll('[data-cattog]').forEach(e=>e.onclick=()=>{
-    const k=e.dataset.cattog; state.catClosed[k]=!state.catClosed[k]; render();});
+    const k=e.dataset.cattog; state.modCatOpen[k]=!state.modCatOpen[k]; render();});
 
   const d = state.famDraft;
   if(!d) return;

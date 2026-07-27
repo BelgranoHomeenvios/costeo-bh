@@ -347,6 +347,9 @@
 .mod-fab .mini.vars{min-width:420px;max-width:640px}
 .mod-fab .mod-dis{color:var(--sec)}
 .mod-fab .mod-costo{font-weight:650}
+.mod-fab .mod-title{display:flex;flex-direction:column;gap:1px}
+.mod-fab .mod-title strong{font-weight:650}
+.mod-fab .mod-sub{font-size:var(--t-sm);color:var(--mut);font-weight:500}
 
 /* ---- Lista de modelos por categoría ---- */
 .mod-fab .mod-toolbar{display:flex;justify-content:flex-end;margin-bottom:14px}

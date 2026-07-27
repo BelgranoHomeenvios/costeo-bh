@@ -2035,29 +2035,38 @@ function bindSave(){
 
   /* ---- vistas ---- */
   function despiecePage(){
-    if(state.dspFam) return dspEditor();
-    if(state.dspCat) return dspModelos();
-    return dspCategorias();
+    return state.dspFam ? dspEditor() : dspLista();
   }
-  function dspCategorias(){
-    const cats=state.categorias||[], fams=state.familias||[];
-    const card=(key,label,n)=>`<button class="dsp-cat" data-dspcat="${esc(key)}">
-      ${Icon('grid')}<div class="dsp-cat-nm">${esc(label)}</div><div class="dsp-cat-ct">${n} ${n===1?'modelo':'modelos'}</div></button>`;
-    return head('03 · Despiece','Despiece','Elegí una categoría para cargar el despiece de cada modelo. De acá salen los m², el filo y la solicitud de accesorios.')
-      + `<div class="dsp-catgrid">${card('all','Ver todas',fams.length)}
-         ${cats.map(c=>card(c.id, c.nombre, fams.filter(f=>f.categoria_id===c.id).length)).join('')}</div>`;
-  }
-  function dspModelos(){
-    const key=state.dspCat, fams=(state.familias||[]).filter(f=>key==='all'||f.categoria_id===key);
-    const nom = key==='all' ? 'Todos los modelos' : ((state.categorias.find(c=>c.id===key)||{}).nombre||'');
-    const crumb=`<div class="dsp-crumb"><span class="lk" data-dspnav="cat">Despiece</span><span class="sep">›</span><span class="cur">${esc(nom)}</span></div>`;
-    const estado=f=>{ const cargado=f.despiece&&f.despiece.med&&Object.keys(f.despiece.med).length;
-      return cargado?'<span class="dsp-chip ok">Completo</span>':'<span class="dsp-chip pend">Pendiente</span>'; };
-    const cards=fams.map(f=>`<button class="dsp-mod" data-dspfam="${esc(f.id)}">
-      <div class="dsp-mod-top"><span class="dsp-mod-nm">${esc(f.nombre)}</span>${estado(f)}</div>
-      <div class="dsp-mod-sub">${(+f.n_puertas||0)} puertas · ${(f.medidas||[]).length} medidas</div></button>`).join('');
-    const body = fams.length ? `<div class="dsp-modgrid">${cards}</div>` : empty('Todavía no hay modelos en esta categoría.');
-    return crumb + head('03 · Despiece', esc(nom), 'Tocá un modelo para cargar o editar su despiece. Verde: ya cargado. Ámbar: pendiente.') + body;
+  function dspEsDespiezado(f){ return !!(f && f.despiece && f.despiece.med && Object.keys(f.despiece.med).length); }
+  function dspLista(){
+    const fams = state.familias||[];
+    state.dspCat = state.dspCat || 'todos';
+    const catName = id => (state.categorias.find(c=>c.id===id)||{}).nombre || 'Sin categoría';
+    const nDone = fams.filter(dspEsDespiezado).length;
+    const kpi=(l,v,s)=>`<div class="kpi"><div class="kpi-l">${l}</div><div class="kpi-v">${v}</div><div class="kpi-s">${s||''}</div></div>`;
+    const kpis=`<div class="kpi-row">
+      ${kpi('Modelos', fams.length, 'a despiezar')}
+      ${kpi('Despiezados', nDone, 'con m² cargados')}
+      ${kpi('Pendientes', fams.length-nDone, 'sin despiece')}</div>`;
+    const conteo={}; fams.forEach(f=>{ const k=f.categoria_id||'__none'; conteo[k]=(conteo[k]||0)+1; });
+    const tabDefs=[['todos','Todos',fams.length]].concat(Object.keys(conteo)
+      .sort((a,b)=>catName(a).localeCompare(catName(b))).map(k=>[k,catName(k),conteo[k]]));
+    const tabs=`<div class="subtabbar">${tabDefs.map(([k,n,c])=>
+      `<button class="subtab ${state.dspCat===k?'active':''}" data-dspcat="${esc(k)}">${esc(n)} <span class="subtab-n">${c}</span></button>`).join('')}</div>`;
+    const list=(state.dspCat==='todos'?fams:fams.filter(f=>(f.categoria_id||'__none')===state.dspCat))
+      .slice().sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''));
+    const fila=f=>{ const done=dspEsDespiezado(f), nmed=(f.medidas||[]).length;
+      const dis=`${esc(f.apertura||'—')}${f.n_puertas?` · ${f.n_puertas} puertas`:''} · ${nmed} medida${nmed!==1?'s':''}`;
+      return `<tr class="mod-row" data-dspfam="${esc(f.id)}" style="cursor:pointer">
+        <td class="mod-caret"><strong>${esc(f.nombre)}</strong></td>
+        <td class="mod-dis">${dis}</td>
+        <td class="num"><span class="dsp-chip ${done?'ok':'pend'}">${done?'Despiezado':'Pendiente'}</span></td></tr>`; };
+    const tabla=list.length?`<div class="card" style="padding:0;overflow:hidden;"><table class="mod-tbl"><thead><tr>
+      <th>Modelo</th><th>Diseño</th><th class="num">Despiece</th></tr></thead><tbody>${list.map(fila).join('')}</tbody></table></div>`
+      : empty('No hay modelos en esta categoría.');
+    return head('03 · Despiece','Despiece',
+      'Elegí un modelo para cargar o editar su despiece. De acá salen los m², el filo y la solicitud de accesorios que alimentan el costo del modelo.')
+      + kpis + tabs + tabla;
   }
   function dspEditor(){
     const fam=(state.familias||[]).find(f=>f.id===state.dspFam);
@@ -2066,7 +2075,7 @@ function bindSave(){
     const meds=fam.medidas||[];
     if(!(state.dspMed<meds.length)) state.dspMed=0;
     const crumb=`<div class="dsp-crumb"><span class="lk" data-dspnav="cat">Despiece</span><span class="sep">›</span>
-      <span class="lk" data-dspnav="mod">${esc(nom)}</span><span class="sep">›</span><span class="cur">${esc(fam.nombre)}</span></div>`;
+      <span class="cur">${esc(fam.nombre)} <span style="color:var(--mut);font-weight:500">· ${esc(nom)}</span></span></div>`;
     if(!meds.length)
       return crumb + head('03 · Despiece', esc(fam.nombre), esc(nom))
         + empty('Este modelo todavía no tiene medidas. Cargalas en Modelos → editar → Medidas y volvé.');
@@ -2158,8 +2167,7 @@ function bindSave(){
     const fam=state.dspFam ? (state.familias||[]).find(f=>f.id===state.dspFam) : null;
     document.querySelectorAll('[data-dspcat]').forEach(e=>e.onclick=()=>{ state.dspCat=e.dataset.dspcat; render(); });
     document.querySelectorAll('[data-dspfam]').forEach(e=>e.onclick=()=>{ state.dspFam=e.dataset.dspfam; state.dspMed=0; render(); });
-    document.querySelectorAll('[data-dspnav]').forEach(e=>e.onclick=()=>{ const t=e.dataset.dspnav;
-      if(t==='cat'){ state.dspFam=null; state.dspCat=null; } else if(t==='mod'){ state.dspFam=null; } render(); });
+    document.querySelectorAll('[data-dspnav]').forEach(e=>e.onclick=()=>{ state.dspFam=null; render(); });
     if(!fam) return;
     document.querySelectorAll('[data-dspmed]').forEach(e=>e.onclick=()=>{ state.dspMed=+e.dataset.dspmed; render(); });
     document.querySelectorAll('[data-dspstp]').forEach(e=>e.onclick=()=>{ const [k,d]=e.dataset.dspstp.split(':');

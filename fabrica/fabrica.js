@@ -38,7 +38,10 @@ let state = {
   modCat:'todos',           // tab de categoría activa en la lista
   catClosed:{},             // (legacy) categorías cerradas en la lista
   famOpen:1,                // qué módulo del editor está abierto (uno por vez)
-  preview:null              // variante que muestra el panel de costo en vivo
+  preview:null,             // variante que muestra el panel de costo en vivo
+  dspCat:null,              // categoría elegida en Despiece (id | 'all' | null)
+  dspFam:null,              // id de la familia abierta en Despiece
+  dspMed:0                  // índice de la medida activa en el editor de despiece
 };
 
 /* ---------- VARIANTES ----------
@@ -293,6 +296,7 @@ function shell(){
 
 function page(){
   if(state.tab==='familias')    return state.famDraft!==null ? familiaEditor() : familiasPage();
+  if(state.tab==='despiece')    return despiecePage();
   if(state.tab==='products')    return state.productDetail ? productDetail() : productsPage();
   if(state.tab==='materiales')  return materialesHub();
   if(state.tab==='labor')       return laborPage();
@@ -1735,6 +1739,7 @@ function bindEvents(){
   document.querySelectorAll('[data-nav]').forEach(e=>e.onclick=()=>{
     state.tab=e.dataset.nav; state.productDetail=null; state.familiaFilter=''; state.famDraft=null; render();});
   bindFamilias();
+  bindDespiece();
   document.querySelectorAll('[data-subtab]').forEach(e=>e.onclick=()=>{
     state.materialsSubtab=e.dataset.subtab; state.familiaFilter=''; render();});
   document.querySelectorAll('[data-familia]').forEach(e=>e.onclick=()=>{
@@ -1922,6 +1927,267 @@ function bindSave(){
 }
 
 
+
+  /* ================================================================
+     DESPIECE (etapa 3) — Costos › Despiece
+     Categorías → Modelos → Editor. El despiece sale por fórmula desde
+     cada medida (módulo = ancho / nº de puertas) y es editable a mano.
+     Al guardar, los m² por grupo se vuelcan en las medidas del modelo
+     (carcasa_m2 / blanco_m2 / puerta_m2 / fondo_m2 / carcasa_tapacanto_m)
+     y así el "Costo en vivo" de Modelos se calcula solo.
+     ================================================================ */
+  const DSP_G = {
+    ext:  {label:'Estructura ext.', color:'var(--blue)'},
+    intE: {label:'Estructura int.', color:'#7C3AED'},
+    cajI: {label:'Cajón interior',  color:'#0891B2'},
+    fCaj: {label:'Frente cajón',    color:'#DB2777'},
+    fondo:{label:'Fondo 3mm',       color:'var(--gray)'},
+    pPla: {label:'Puerta placa',    color:'#059669'},
+    pEsp: {label:'Puerta espejo',   color:'var(--amber)'},
+  };
+  const DSP_SECS = ['Estructura','Estantes','Cajones','Puertas','Fondos','Accesorios'];
+  const DSP_CTRL = { Estantes:[['est','Estantes'],['bar','Barrales']], Cajones:[['caj','Cajones']], Puertas:[['pla','Placa'],['esp','Espejo']] };
+  const dspCm = x => (Math.round((+x)*100)/100);
+  const dspM2 = x => (+x).toLocaleString('es-AR',{minimumFractionDigits:2,maximumFractionDigits:2});
+
+  // receta base por fórmula (validada contra el Excel del Adam)
+  function dspPiezas(med, p){
+    const A=+med.ancho||0, H=+med.alto||0, P=+med.prof||60;
+    const nP=Math.max(1,(+p.pla||0)+(+p.esp||0)), mod=A/nP, inter=A-3.6;
+    return [
+      {k:'techo', sec:'Estructura', n:'Techo',            f:'ancho × prof',            l:A,        a:P,       c:1,               g:'ext', v:'h', filo:{L:1,A:0}},
+      {k:'piso',  sec:'Estructura', n:'Piso',             f:'ancho−3,6 × prof',        l:inter,    a:P,       c:1,               g:'ext', v:'h', filo:{L:1,A:0}},
+      {k:'zocalo',sec:'Estructura', n:'Zócalo',           f:'ancho−3,6 × 9',           l:inter,    a:9,       c:2,               g:'ext', v:'h', filo:{L:1,A:0}},
+      {k:'parante',sec:'Estructura',n:'Costado exterior', f:'alto−1,8 × prof',         l:H-1.8,    a:P,       c:2,               g:'ext', v:'v', filo:{L:1,A:0}},
+      {k:'divint',sec:'Estructura', n:'Costado interior', f:'alto−12,6 × prof−15',     l:H-12.6,   a:P-15,    c:Math.max(0,nP-1),g:'intE',v:'v', filo:{L:1,A:0}},
+      {k:'estcaj',sec:'Estantes',   n:'Estante cajonera', f:'módulo−10,3 × prof−15',   l:mod-10.3, a:P-15,    c:4,               g:'intE',v:'h', filo:{L:1,A:0}},
+      {k:'estcol',sec:'Estantes',   n:'Estante colgador', f:'módulo+1,55 × prof−15',   l:mod+1.55, a:P-15,    c:+p.est||0,       g:'intE',v:'h', filo:{L:1,A:0}},
+      {k:'frcaj', sec:'Cajones',    n:'Frente de cajón',  f:'módulo−11,3 × 14',        l:mod-11.3, a:14,      c:+p.caj||0,       g:'fCaj',v:'h', filo:{L:1,A:1}},
+      {k:'ctfr',  sec:'Cajones',    n:'Contrafrente cajón',f:'módulo−16,5 × 11',       l:mod-16.5, a:11,      c:(+p.caj||0)*2,   g:'cajI',v:'',  filo:{L:1,A:0}},
+      {k:'ctcaj', sec:'Cajones',    n:'Costado de cajón', f:'prof−20 × 12',            l:P-20,     a:12,      c:(+p.caj||0)*2,   g:'cajI',v:'',  filo:{L:1,A:0}},
+      {k:'focaj', sec:'Cajones',    n:'Fondo de cajón',   f:'módulo−13,3 × prof−20',   l:mod-13.3, a:P-20,    c:+p.caj||0,       g:'fondo',v:'', filo:{L:0,A:0}},
+      {k:'ppla',  sec:'Puertas',    n:'Puerta placa',     f:'alto−16,1 × (módulo−3,8)',l:H-16.1,   a:mod-3.8, c:+p.pla||0,       g:'pPla',v:'v', filo:{L:1,A:1}},
+      {k:'pesp',  sec:'Puertas',    n:'Puerta espejo',    f:'alto−16,1 × (módulo−3,8)',l:H-16.1,   a:mod-3.8, c:+p.esp||0,       g:'pEsp',v:'v', filo:{L:0,A:0}},
+      {k:'fondo1',sec:'Fondos',     n:'Fondo (cajonera)', f:'alto−9 × módulo−8,5',     l:H-9,      a:mod-8.5, c:1,               g:'fondo',v:'', filo:{L:0,A:0}},
+      {k:'fondo2',sec:'Fondos',     n:'Fondo (colgador)', f:'alto−9 × módulo+3,85',    l:H-9,      a:mod+3.85,c:Math.max(1,nP-1),g:'fondo',v:'', filo:{L:0,A:0}},
+    ];
+  }
+  // estado de despiece de la medida activa (una receta por medida, con "copiar a todas")
+  function dspSt(fam){
+    fam.despiece = fam.despiece || {med:{}};
+    fam.despiece.med = fam.despiece.med || {};
+    const ix = state.dspMed||0;
+    if(!fam.despiece.med[ix]){
+      const prev = Object.keys(fam.despiece.med)[0];
+      fam.despiece.med[ix] = (prev!==undefined)
+        ? JSON.parse(JSON.stringify(fam.despiece.med[prev]))
+        : {caj:3, est:4, bar:1, pla:(+fam.n_puertas||2), esp:0, ov:{}, filo:{}, del:{}, extra:[], closed:{}};
+    }
+    const s = fam.despiece.med[ix];
+    s.ov=s.ov||{}; s.filo=s.filo||{}; s.del=s.del||{}; s.extra=s.extra||[]; s.closed=s.closed||{};
+    return s;
+  }
+  function dspMedActiva(fam){ return (fam.medidas||[])[state.dspMed||0] || {ancho:'',alto:'',prof:60}; }
+  function dspSetOv(s,k,f,val){ const ex=(s.extra||[]).find(x=>x.k===k); if(ex){ex[f]=val;return;} s.ov[k]=s.ov[k]||{}; s.ov[k][f]=val; }
+  function dspEdges(s, pz){ const e=s.filo[pz.k]; if(e) return e;
+    const d=(pz.filo)||(pz.base&&pz.base.filo)||{L:0,A:0}; return {t:!!d.L,b:!!d.L,l:!!d.A,r:!!d.A}; }
+  function dspCompute(fam){
+    const med=dspMedActiva(fam), s=dspSt(fam);
+    const base=dspPiezas(med,s).map(pz=>{ const o=s.ov[pz.k]||{}; const edited=Object.keys(o).length>0||!!s.filo[pz.k];
+      return {...pz, n:('n'in o)?o.n:pz.n, c:('c'in o)?o.c:pz.c, l:('l'in o)?o.l:pz.l, a:('a'in o)?o.a:pz.a,
+        g:('g'in o)?o.g:pz.g, v:('v'in o)?o.v:pz.v, base:pz, edited};
+    }).filter(pz=>!s.del[pz.k]);
+    const extras=(s.extra||[]).map(pz=>({...pz, base:null, edited:true, isExtra:true, sec:'Accesorios',
+      filo:pz.filo||{L:0,A:0}}));
+    return base.concat(extras);
+  }
+  function dspTotals(fam){
+    const s=dspSt(fam), ps=dspCompute(fam), m2g={}; let filo=0;
+    ps.forEach(pz=>{ if((+pz.c)<=0) return; const e=dspEdges(s,pz);
+      filo += ((e.t?+pz.l:0)+(e.b?+pz.l:0)+(e.l?+pz.a:0)+(e.r?+pz.a:0))/100*(+pz.c);
+      m2g[pz.g]=(m2g[pz.g]||0)+(pz.l/100)*(pz.a/100)*(+pz.c); });
+    return {m2g, filo};
+  }
+  // mapea los grupos del despiece a los campos de la medida que usa el motor de costos
+  function dspMapMedida(fam){
+    const {m2g, filo}=dspTotals(fam);
+    return { carcasa_m2:+(((m2g.ext||0)+(m2g.intE||0)+(m2g.fCaj||0))).toFixed(3),
+             blanco_m2:+((m2g.cajI||0)).toFixed(3),
+             puerta_m2:+((m2g.pPla||0)).toFixed(3),
+             fondo_m2:+((m2g.fondo||0)).toFixed(3),
+             carcasa_tapacanto_m:+filo.toFixed(2) };
+  }
+  function dspAcc(fam){
+    const s=dspSt(fam), med=dspMedActiva(fam);
+    const caj=+s.caj||0, est=+s.est||0, bar=+s.bar||0, pla=+s.pla||0, esp=+s.esp||0;
+    const cU=caj*2, guia=(+med.ancho||0)<=200?'200':'300', torn=cU*2+bar*2*2+16;
+    return [
+      ['Correderas metálicas', caj+' par'+(caj!==1?'es':'')+' · '+cU+' u'],
+      ['Pitutos de estante', (est*4)+' u'],
+      ['Barral', bar+' u'],
+      ['Soportes de barral', (bar*2)+' u'],
+      ['Guía de aluminio', '1 u · perfil '+guia],
+      ['Kit de ruedas', (pla+esp)+' u'],
+      ['Goma sostén de espejo', esp>0?esp+' u · +$18.000 c/u':'—'],
+      ['Tornillos 3,5×16', torn+' u'],
+    ];
+  }
+
+  /* ---- vistas ---- */
+  function despiecePage(){
+    if(state.dspFam) return dspEditor();
+    if(state.dspCat) return dspModelos();
+    return dspCategorias();
+  }
+  function dspCategorias(){
+    const cats=state.categorias||[], fams=state.familias||[];
+    const card=(key,label,n)=>`<button class="dsp-cat" data-dspcat="${esc(key)}">
+      ${Icon('grid')}<div class="dsp-cat-nm">${esc(label)}</div><div class="dsp-cat-ct">${n} ${n===1?'modelo':'modelos'}</div></button>`;
+    return head('03 · Despiece','Despiece','Elegí una categoría para cargar el despiece de cada modelo. De acá salen los m², el filo y la solicitud de accesorios.')
+      + `<div class="dsp-catgrid">${card('all','Ver todas',fams.length)}
+         ${cats.map(c=>card(c.id, c.nombre, fams.filter(f=>f.categoria_id===c.id).length)).join('')}</div>`;
+  }
+  function dspModelos(){
+    const key=state.dspCat, fams=(state.familias||[]).filter(f=>key==='all'||f.categoria_id===key);
+    const nom = key==='all' ? 'Todos los modelos' : ((state.categorias.find(c=>c.id===key)||{}).nombre||'');
+    const crumb=`<div class="dsp-crumb"><span class="lk" data-dspnav="cat">Despiece</span><span class="sep">›</span><span class="cur">${esc(nom)}</span></div>`;
+    const estado=f=>{ const cargado=f.despiece&&f.despiece.med&&Object.keys(f.despiece.med).length;
+      return cargado?'<span class="dsp-chip ok">Completo</span>':'<span class="dsp-chip pend">Pendiente</span>'; };
+    const cards=fams.map(f=>`<button class="dsp-mod" data-dspfam="${esc(f.id)}">
+      <div class="dsp-mod-top"><span class="dsp-mod-nm">${esc(f.nombre)}</span>${estado(f)}</div>
+      <div class="dsp-mod-sub">${(+f.n_puertas||0)} puertas · ${(f.medidas||[]).length} medidas</div></button>`).join('');
+    const body = fams.length ? `<div class="dsp-modgrid">${cards}</div>` : empty('Todavía no hay modelos en esta categoría.');
+    return crumb + head('03 · Despiece', esc(nom), 'Tocá un modelo para cargar o editar su despiece. Verde: ya cargado. Ámbar: pendiente.') + body;
+  }
+  function dspEditor(){
+    const fam=(state.familias||[]).find(f=>f.id===state.dspFam);
+    if(!fam){ state.dspFam=null; return dspModelos(); }
+    const nom=(state.categorias.find(c=>c.id===fam.categoria_id)||{}).nombre||'';
+    const meds=fam.medidas||[];
+    if(!(state.dspMed<meds.length)) state.dspMed=0;
+    const crumb=`<div class="dsp-crumb"><span class="lk" data-dspnav="cat">Despiece</span><span class="sep">›</span>
+      <span class="lk" data-dspnav="mod">${esc(nom)}</span><span class="sep">›</span><span class="cur">${esc(fam.nombre)}</span></div>`;
+    if(!meds.length)
+      return crumb + head('03 · Despiece', esc(fam.nombre), esc(nom))
+        + empty('Este modelo todavía no tiene medidas. Cargalas en Modelos → editar → Medidas y volvé.');
+    const medTabs=`<div class="dsp-medbar">${meds.map((m,i)=>`<button class="dsp-medtab ${i===state.dspMed?'on':''}" data-dspmed="${i}">${esc(m.ancho||'?')} × ${esc(m.alto||'?')}</button>`).join('')}</div>`;
+    return crumb
+      + head('03 · Despiece', `${esc(fam.nombre)} <span class="dsp-cat-tag">${esc(nom)}</span>`,
+             'El despiece sale por fórmula desde la medida; editás a mano lo que haga falta. Al guardar, los m² alimentan el Costo en vivo del modelo.')
+      + medTabs
+      + `<div class="dsp-layout">
+          <div class="card"><div class="dsp-body">
+            ${dspTabla(fam)}
+            <button class="add-line-btn" data-dspadd style="margin-top:10px;">+ Agregar pieza</button>
+            <div class="helper" style="margin-top:10px;">Todo en cm. Si editás una celda que venía por fórmula aparece un punto y el ↺ para volver al valor calculado. En Filo, tocá cada uno de los 4 cantos que llevan tapacanto.</div>
+          </div></div>
+          <div class="dsp-side" id="dsp-side">${dspSidebar(fam)}</div>
+        </div>
+        <div class="dsp-foot">
+          <button class="btn-primary" data-dspsave>Guardar despiece</button>
+          <button class="btn-sm" data-dspcopy>Copiar esta medida a todas</button>
+        </div>`;
+  }
+  function dspTabla(fam){
+    const s=dspSt(fam), ps=dspCompute(fam).filter(p=>(+p.c)>0||p.isExtra);
+    let rows='';
+    DSP_SECS.forEach(sec=>{
+      const rs=ps.filter(p=>p.sec===sec), hasCtrl=!!DSP_CTRL[sec];
+      if(!rs.length && !hasCtrl) return;
+      const closed=!!s.closed[sec];
+      const ctrls=(DSP_CTRL[sec]||[]).map(([k,lb])=>`<span class="dsp-mstp"><span class="ml">${lb}</span><button data-dspstp="${k}:-1">−</button><b>${+s[k]||0}</b><button data-dspstp="${k}:1">+</button></span>`).join('');
+      rows+=`<tr class="dsp-sechd"><td colspan="8"><div class="dsp-sec-in" data-dspsec="${sec}">
+        <span class="dsp-chev ${closed?'':'open'}">▶</span><span class="dsp-sec-t">${sec}</span>
+        <span class="dsp-sec-ctrl">${ctrls}</span><span class="dsp-sec-ct">${rs.length} pza${rs.length===1?'':'s'}</span></div></td></tr>`;
+      if(!closed) rs.forEach(p=>rows+=dspRow(s,p));
+    });
+    return `<div class="med-grid-wrap"><table class="med-grid dsp-table"><thead><tr>
+      <th>Pieza</th><th class="num">Cant</th><th class="num">Largo</th><th class="num">Ancho</th>
+      <th>Grupo</th><th>Veta</th><th>Filo</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  }
+  function dspRow(s,p){
+    const e=dspEdges(s,p), nL=(e.t?1:0)+(e.b?1:0)+(e.l?1:0)+(e.r?1:0);
+    const gsel=`<select class="gsel" data-dspf="g" data-dspk="${p.k}">${Object.keys(DSP_G).map(g=>`<option value="${g}" ${g===p.g?'selected':''}>${DSP_G[g].label}</option>`).join('')}</select>`;
+    const vsel=`<select class="gsel" data-dspf="v" data-dspk="${p.k}">${[['v','Vertical'],['h','Horizontal'],['','Indistinta']].map(([v,l])=>`<option value="${v}" ${v===p.v?'selected':''}>${l}</option>`).join('')}</select>`;
+    return `<tr class="dsp-pz">
+      <td><div class="dsp-nm"><input class="gcell dsp-name" data-dspf="n" data-dspk="${p.k}" value="${esc(p.n)}">
+        ${p.edited?`<span class="dsp-ed" title="editado"></span><span class="dsp-rev" data-dsprev="${p.k}" title="volver a la fórmula">↺</span>`:''}</div>
+        <div class="dsp-frm">${p.base?esc(p.base.f):'pieza manual'}</div></td>
+      <td class="num"><input class="gcell" data-dspf="c" data-dspk="${p.k}" type="number" step="1" value="${+p.c}"></td>
+      <td class="num"><input class="gcell" data-dspf="l" data-dspk="${p.k}" type="number" step="0.1" value="${dspCm(p.l)}"></td>
+      <td class="num"><input class="gcell" data-dspf="a" data-dspk="${p.k}" type="number" step="0.1" value="${dspCm(p.a)}"></td>
+      <td>${gsel}</td><td>${vsel}</td>
+      <td><div class="dsp-filo"><div class="dsp-edge" data-dspfk="${p.k}">
+        <span class="eg t ${e.t?'on':''}" data-e="t"></span><span class="eg b ${e.b?'on':''}" data-e="b"></span>
+        <span class="eg l ${e.l?'on':''}" data-e="l"></span><span class="eg r ${e.r?'on':''}" data-e="r"></span>
+      </div><span class="dsp-fct">${nL}/4</span></div></td>
+      <td class="gact"><button class="iconbtn danger" data-dspdel="${p.k}" title="Quitar">✕</button></td></tr>`;
+  }
+  function dspSidebar(fam){
+    const {m2g, filo}=dspTotals(fam); let tot=0;
+    const rows=Object.keys(DSP_G).filter(g=>m2g[g]).map(g=>{ tot+=m2g[g];
+      return `<div class="cp-row"><span class="cp-dot" style="background:${DSP_G[g].color}"></span><span class="cp-nm">${DSP_G[g].label}</span><span class="cp-am">${dspM2(m2g[g])} m²</span></div>`; }).join('');
+    const acc=dspAcc(fam).map(([l,v])=>`<div class="dsp-accrow"><span>${esc(l)}</span><b>${esc(v)}</b></div>`).join('');
+    return `<div class="card cp-card"><div class="cp-h">Resumen de la medida</div><div class="cp-b">
+      <div class="dsp-side-lbl">m² por grupo de material</div>${rows||'<div class="helper" style="margin:0;">Sin piezas.</div>'}
+      <div class="dsp-side-tot"><span>Total placa</span><b>${dspM2(tot)} m²</b></div>
+      <div class="dsp-side-tot"><span>Filo (tapacanto)</span><b>${dspM2(filo)} m</b></div>
+      <div class="dsp-side-lbl" style="margin-top:16px;">Solicitud de accesorios</div>${acc}
+      <div class="helper" style="margin-top:12px;">Estos m² y metros se guardan en la medida y alimentan el <b>Costo en vivo</b> del modelo. Mano de obra y herrajes se completan como hasta ahora.</div>
+    </div></div>`;
+  }
+  function dspRefreshSide(fam){ const h=document.getElementById('dsp-side'); if(h) h.innerHTML=dspSidebar(fam); }
+  function dspMarkEd(k){ const inp=document.querySelector(`.dsp-name[data-dspk="${CSS.escape(k)}"]`); if(!inp) return;
+    const nm=inp.closest('.dsp-nm'); if(nm && !nm.querySelector('.dsp-ed'))
+      nm.insertAdjacentHTML('beforeend',`<span class="dsp-ed"></span><span class="dsp-rev" data-dsprev="${k}" title="volver a la fórmula">↺</span>`); }
+  async function dspGuardar(fam){
+    const meds=fam.medidas||[], prev=state.dspMed;
+    Object.keys((fam.despiece&&fam.despiece.med)||{}).forEach(k=>{ const ix=+k; if(ix>=meds.length) return;
+      state.dspMed=ix; Object.assign(meds[ix], dspMapMedida(fam)); });
+    state.dspMed=prev;
+    const ok=await save('familias', fam.id, {despiece:fam.despiece, medidas:fam.medidas});
+    if(ok) UI.toast('Despiece guardado. Los m² se cargaron en las medidas del modelo.','ok');
+  }
+  function dspCopiarTodas(fam){
+    const cur=(fam.despiece&&fam.despiece.med)?fam.despiece.med[state.dspMed]:null; if(!cur) return;
+    (fam.medidas||[]).forEach((m,ix)=>{ if(ix!==state.dspMed) fam.despiece.med[ix]=JSON.parse(JSON.stringify(cur)); });
+    UI.toast('Copiado a todas las medidas.','ok');
+  }
+  function bindDespiece(){
+    if(state.tab!=='despiece') return;
+    const fam=state.dspFam ? (state.familias||[]).find(f=>f.id===state.dspFam) : null;
+    document.querySelectorAll('[data-dspcat]').forEach(e=>e.onclick=()=>{ state.dspCat=e.dataset.dspcat; render(); });
+    document.querySelectorAll('[data-dspfam]').forEach(e=>e.onclick=()=>{ state.dspFam=e.dataset.dspfam; state.dspMed=0; render(); });
+    document.querySelectorAll('[data-dspnav]').forEach(e=>e.onclick=()=>{ const t=e.dataset.dspnav;
+      if(t==='cat'){ state.dspFam=null; state.dspCat=null; } else if(t==='mod'){ state.dspFam=null; } render(); });
+    if(!fam) return;
+    document.querySelectorAll('[data-dspmed]').forEach(e=>e.onclick=()=>{ state.dspMed=+e.dataset.dspmed; render(); });
+    document.querySelectorAll('[data-dspstp]').forEach(e=>e.onclick=()=>{ const [k,d]=e.dataset.dspstp.split(':');
+      const s=dspSt(fam); s[k]=Math.max(0,(+s[k]||0)+(+d)); render(); });
+    document.querySelectorAll('[data-dspsec]').forEach(e=>e.onclick=()=>{ const s=dspSt(fam); const sec=e.dataset.dspsec;
+      s.closed[sec]=!s.closed[sec]; render(); });
+    document.querySelectorAll('[data-dsprev]').forEach(e=>e.onclick=()=>{ const s=dspSt(fam); const k=e.dataset.dsprev;
+      delete s.ov[k]; delete s.filo[k]; render(); });
+    document.querySelectorAll('[data-dspdel]').forEach(e=>e.onclick=()=>{ const s=dspSt(fam); const k=e.dataset.dspdel;
+      const i=(s.extra||[]).findIndex(x=>x.k===k); if(i>=0) s.extra.splice(i,1); else s.del[k]=true; render(); });
+    const add=document.querySelector('[data-dspadd]');
+    if(add) add.onclick=()=>{ const s=dspSt(fam); s.extra.push({k:'x'+Date.now(),n:'Pieza nueva',c:1,l:50,a:30,g:'ext',v:'',filo:{L:0,A:0}}); render(); };
+    document.querySelectorAll('.dsp-edge .eg').forEach(el=>el.onclick=()=>{ const s=dspSt(fam);
+      const k=el.parentElement.dataset.dspfk, edge=el.dataset.e; const p=dspCompute(fam).find(x=>x.k===k);
+      const cur={...dspEdges(s,p)}; cur[edge]=!cur[edge]; s.filo[k]=cur; render(); });
+    // edición en vivo de celdas (sin re-render → no pierde foco)
+    document.querySelectorAll('.gcell[data-dspf]').forEach(el=>el.oninput=()=>{ const s=dspSt(fam);
+      const k=el.dataset.dspk, f=el.dataset.dspf;
+      if(f==='c'){ dspSetOv(s,k,f,Math.max(0,parseInt(el.value)||0)); }
+      else { const v=parseFloat(String(el.value).replace(',','.')); if(isNaN(v)) return; dspSetOv(s,k,f,v); }
+      dspMarkEd(k); dspRefreshSide(fam); });
+    document.querySelectorAll('.dsp-name[data-dspf]').forEach(el=>el.oninput=()=>{ const s=dspSt(fam);
+      dspSetOv(s, el.dataset.dspk, 'n', el.value); dspMarkEd(el.dataset.dspk); });
+    document.querySelectorAll('select[data-dspf]').forEach(el=>el.onchange=()=>{ const s=dspSt(fam);
+      dspSetOv(s, el.dataset.dspk, el.dataset.dspf, el.value); render(); });
+    const bs=document.querySelector('[data-dspsave]'); if(bs) bs.onclick=()=>dspGuardar(fam);
+    const bc=document.querySelector('[data-dspcopy]'); if(bc) bc.onclick=()=>dspCopiarTodas(fam);
+  }
 
   /* ---- interfaz con la app unificada ---- */
   const TABS = [['familias','Familias'],['products','Productos'],['materiales','Materiales'],

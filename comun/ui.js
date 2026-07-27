@@ -22,7 +22,8 @@ const Icon = (() => {
     close:'M18 6L6 18M6 6l12 12',
     search:'M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.3-4.3',
     dl:'M12 3v12m0 0l-4-4m4 4l4-4M5 21h14',
-    empty:'M9 3h6l1 3h4a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h4z'
+    empty:'M9 3h6l1 3h4a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h4z',
+    grid:'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z'
   };
   return (n, cls) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
     stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"
@@ -232,6 +233,7 @@ const Router = (() => {
      inicio:'fab.familias',
      paginas:[
        {id:'fab.familias',    label:'Modelos',       icon:'box'},
+       {id:'fab.despiece',    label:'Despiece',      icon:'grid'},
        {id:'fab.products',    label:'Productos',     icon:'tag',   oculto:true},
        {id:'fab.materiales',  label:'Materiales',    icon:'imp'},
        {id:'fab.labor',       label:'Mano de obra',  icon:'clock'},

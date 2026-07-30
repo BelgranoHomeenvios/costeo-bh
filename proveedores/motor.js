@@ -255,12 +255,42 @@ const Data = (() => {
    ============================================================ */
 const Calc = (() => {
 
-  /** Costo base de tabla para (categoría, medida, terminación). */
+  /** Categorías que comparten la misma tabla de costos (mismos criterios).
+   *  Torre Cerrada, Aparadores y Vajilleros (cristaleros) usan la de torre-cerrada. */
+  const COST_ALIAS = { aparadores:'torre-cerrada', vajilleros:'torre-cerrada', cristaleros:'torre-cerrada' };
+
+  /** Largo (frente) en cm a partir de una medida de texto. Normaliza metros→cm
+   *  (0,60 → 60) para poder comparar "0.80" con "80x180x40". */
+  function largoCm(med){
+    const ns = String(med||'').toLowerCase().replace(/×/g,'x').replace(',','.').match(/[\d.]+/g);
+    if(!ns || !ns.length) return null;
+    let n = parseFloat(ns[0]); if(!isFinite(n) || n<=0) return null;
+    if(n < 10) n *= 100;            // metros → cm
+    return Math.round(n);
+  }
+
+  /** Busca el costo en una categoría: 1) match exacto de medida, 2) la medida
+   *  disponible más cercana HACIA ARRIBA, 3) la más grande. null si no hay filas. */
+  function buscarCostoEn(cat, medida, tier){
+    const filas = Data.s.costosBase.filter(x => x.categoriaId===cat && x.tier===tier);
+    if(!filas.length) return null;
+    const ex = filas.find(x => x.medida===medida);
+    if(ex) return Number(ex.costo)||0;
+    const lp = largoCm(medida); if(lp==null) return null;
+    const conL = filas.map(x=>({c:Number(x.costo)||0, l:largoCm(x.medida)})).filter(x=>x.l!=null);
+    const mayores = conL.filter(x=>x.l>=lp).sort((a,b)=>a.l-b.l);   // más cercana hacia arriba
+    if(mayores.length) return mayores[0].c;
+    const todas = conL.slice().sort((a,b)=>b.l-a.l);                // si no hay mayor, la más grande
+    return todas.length ? todas[0].c : null;
+  }
+
+  /** Costo base de tabla para (categoría, medida, terminación). Usa la tabla
+   *  propia de la categoría y, si no tiene, la de su categoría unificada. */
   function costoTabla(catId, medida, tier){
     if(!catId || !medida || !tier) return 0;
-    const r = Data.s.costosBase.find(x =>
-      x.categoriaId===catId && x.medida===medida && x.tier===tier);
-    return r ? Number(r.costo)||0 : 0;
+    let v = buscarCostoEn(catId, medida, tier);
+    if(v==null && COST_ALIAS[catId]) v = buscarCostoEn(COST_ALIAS[catId], medida, tier);
+    return v==null ? 0 : v;
   }
 
   /** El tier (columna de costo) se DERIVA de los colores de la variante.

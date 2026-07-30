@@ -263,6 +263,37 @@ const Calc = (() => {
     return r ? Number(r.costo)||0 : 0;
   }
 
+  /** El tier (columna de costo) se DERIVA de los colores de la variante.
+   *  Regla: la ESTRUCTURA es el color principal/dominante; el otro campo de
+   *  color (frente / detalle / tapa / módulo / zócalo / piso / color) es el
+   *  secundario. El negro cuenta igual que el blanco para el costo.
+   *    estructura no-paraíso + secundario no-paraíso → laqueado
+   *    estructura no-paraíso + secundario paraíso     → comboBlanco
+   *    estructura paraíso     + secundario no-paraíso → comboParaiso
+   *    estructura paraíso     + secundario paraíso     → paraiso
+   *  Devuelve null si no hay campos de color (entonces se usa el tier guardado). */
+  const esParaiso = v => /para/i.test(String(v||''));
+  function tierDeVariante(p){
+    const vs = p.variantes || {};
+    let est = null, sec = null;
+    for(const k of Object.keys(vs)){
+      const kn = String(k).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
+      if(kn.includes('medida')) continue;
+      if(kn.startsWith('estructura')) { est = vs[k]; }
+      else if(/(frente|detalle|tapa|modulo|zocalo|piso|color)/.test(kn)) { if(sec==null) sec = vs[k]; }
+    }
+    const hasEst = est!=null && String(est).trim()!=='';
+    const hasSec = sec!=null && String(sec).trim()!=='';
+    if(!hasEst && !hasSec) return null;
+    if(hasEst && !hasSec) return esParaiso(est) ? 'paraiso' : 'laqueado';
+    if(!hasEst && hasSec) return esParaiso(sec) ? 'paraiso' : 'laqueado';
+    const eP = esParaiso(est), sP = esParaiso(sec);
+    if(!eP && !sP) return 'laqueado';
+    if(!eP &&  sP) return 'comboBlanco';
+    if( eP && !sP) return 'comboParaiso';
+    return 'paraiso';
+  }
+
   /** Adicionales que aplican a un producto, según la regla de su modelo y la
    *  terminación (tier) del producto. Estructura:
    *  - Definición del adicional: {id, nombre, tipo:'pct'|'fijo', valor, tiersDefault:[...]}
@@ -336,11 +367,14 @@ const Calc = (() => {
   function producto(p){
     const cfg = Data.s.config;
     // Prioridad de costo: 1) costo de Fábrica (volcado), 2) costo manual, 3) tabla.
+    // El tier se deriva de los colores (estructura dominante); si no hay campos
+    // de color, se usa el tier guardado.
+    const tierEfectivo = tierDeVariante(p) || p.tier;
     const base = Number(p.costoFabrica)>0
       ? Number(p.costoFabrica)
       : Number(p.costoManual)>0
       ? Number(p.costoManual)
-      : costoTabla(p.categoriaId, p.medidaCosteo, p.tier);
+      : costoTabla(p.categoriaId, p.medidaCosteo, tierEfectivo);
     const {pct, fijo} = adicionales(p);
     const ajuste = Number(p.ajusteManual)||0;
     const hierro = hierroDe(p);

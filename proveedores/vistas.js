@@ -358,15 +358,18 @@ const Views = (() => {
   }
 
   /** Claves de variante de un modelo, ordenadas por prioridad:
-   *  color/terminación → espejo → resto. La medida se excluye (ya es el grupo). */
+   *  ESTRUCTURA (color principal) → resto de colores (frente/detalle/tapa…) →
+   *  espejo → resto. La medida se excluye (ya es el grupo). */
   function clavesVar(items){
     const claves = [];
     items.forEach(({p})=>Object.keys(p.variantes||{}).forEach(k=>{ if(!claves.includes(k)) claves.push(k); }));
     const prio = k => { const s=String(k).toUpperCase();
-      if(s.includes('MELAMINA')||s.includes('COLOR')||s.includes('ESTRUCTURA')||s.includes('FRENTE')
-        ||s.includes('TERMINA')||s.includes('TAPIZ')||s.includes('MODULO')||s.includes('TAPA')||s.includes('DETALLE')) return 1;
-      if(s.includes('ESPEJO')) return 2;
-      return 3; };
+      if(s.includes('ESTRUCTURA')) return 1;                    // color principal, siempre primero
+      if(s.includes('MELAMINA')||s.includes('COLOR')||s.includes('FRENTE')||s.includes('TERMINA')
+        ||s.includes('TAPIZ')||s.includes('MODULO')||s.includes('TAPA')||s.includes('DETALLE')
+        ||s.includes('HUECO')||s.includes('ZOCALO')||s.includes('ZÓCALO')||s.includes('PISO')) return 2;
+      if(s.includes('ESPEJO')) return 3;
+      return 4; };
     return claves
       .filter(k=>!String(k).toUpperCase().includes('MEDIDA'))   // la medida ya es el grupo
       .sort((a,b)=>prio(a)-prio(b));

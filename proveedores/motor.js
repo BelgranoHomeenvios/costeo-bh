@@ -335,9 +335,10 @@ const Calc = (() => {
     let pct = 0, fijo = 0;
     const defs = Data.s.config.adicionales || [];
     const todasTier = TIERS.map(t=>t.key);
+    const tv = tierDeVariante(p) || p.tier;   // tier REAL (derivado) para filtrar; el guardado es poco confiable
     const sumar = (a, tiers) => {
       const t = (tiers && tiers.length) ? tiers : (a.tiersDefault && a.tiersDefault.length ? a.tiersDefault : todasTier);
-      if(!t.includes(p.tier)) return;
+      if(!t.includes(tv)) return;
       if(a.tipo === 'pct') pct += (Number(a.valor)||0)/100;
       else fijo += Number(a.valor)||0;
     };

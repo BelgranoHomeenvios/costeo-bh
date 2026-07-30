@@ -382,7 +382,7 @@ const Calc = (() => {
   function hierroDe(p){
     const hierros = Data.s.config.hierros || [];
     if(!hierros.length) return null;
-    const [lp] = largoAlto(p.medidaCosteo || p.medida);
+    const lp = largoCm(p.medidaCosteo || p.medida);   // normaliza metros↔cm
     if(lp==null) return null;
     const modelo = (p.modelo||'').toLowerCase();
     return hierros.find(h=>{
